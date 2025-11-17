@@ -54,10 +54,10 @@ from .math_utils import se32trans
 from .math_utils import se32part
 
 # euler
-from .math_utils import zyz2rot
-from .math_utils import rot2zyz
 from .math_utils import yaw2quat
 from .math_utils import quat2yaw
+from .math_utils import euler2rot
+from .math_utils import rot2euler
 
 __all__ = [
     # version
@@ -113,10 +113,10 @@ __all__ = [
     'se32part',
 
     # math euler
-    'zyz2rot',
-    'rot2zyz',
     'yaw2quat',
     'quat2yaw',
+    'euler2rot',
+    'rot2euler',
 ]
 
 # print("#### Thanks for using HEXFELLOW Utilities :) ####")
