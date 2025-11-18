@@ -796,26 +796,29 @@ def single_euler2rot(theta: float | np.ndarray, format: str) -> np.ndarray:
     single = np.isscalar(theta)
     if single:
         theta = np.array([theta])
+
     rot = np.zeros((theta.shape[0], 3, 3))
-    for i in range(theta.shape[0]):
-        if format == 'x':
-            rot[i] = np.array([
-                [1, 0, 0],
-                [0, np.cos(theta[i]), -np.sin(theta[i])],
-                [0, np.sin(theta[i]), np.cos(theta[i])],
-            ])
-        elif format == 'y':
-            rot[i] = np.array([
-                [np.cos(theta[i]), 0, np.sin(theta[i])],
-                [0, 1, 0],
-                [-np.sin(theta[i]), 0, np.cos(theta[i])],
-            ])
-        elif format == 'z':
-            rot[i] = np.array([
-                [np.cos(theta[i]), -np.sin(theta[i]), 0],
-                [np.sin(theta[i]), np.cos(theta[i]), 0],
-                [0, 0, 1],
-            ])
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
+    if format == 'x':
+        rot[:, 0, 0] = 1
+        rot[:, 1, 1] = cos_theta
+        rot[:, 1, 2] = -sin_theta
+        rot[:, 2, 1] = sin_theta
+        rot[:, 2, 2] = cos_theta
+    elif format == 'y':
+        rot[:, 0, 0] = cos_theta
+        rot[:, 0, 2] = sin_theta
+        rot[:, 1, 1] = 1
+        rot[:, 2, 0] = -sin_theta
+        rot[:, 2, 2] = cos_theta
+    elif format == 'z':
+        rot[:, 0, 0] = cos_theta
+        rot[:, 0, 1] = -sin_theta
+        rot[:, 1, 0] = sin_theta
+        rot[:, 1, 1] = cos_theta
+        rot[:, 2, 2] = 1
+
     return rot[0] if single else rot
 
 
@@ -828,15 +831,15 @@ def single_rot2euler(rot: np.ndarray, format: str) -> np.ndarray:
     single = rot.ndim == 2
     if single:
         rot = rot[np.newaxis, ...]
-    rot_num = rot.shape[0]
-    theta = np.zeros((rot_num, 3))
-    for i in range(rot_num):
-        if format == 'x':
-            theta[i, 0] = np.arctan2(rot[i, 2, 1], rot[i, 1, 1])
-        elif format == 'y':
-            theta[i, 1] = np.arctan2(rot[i, 0, 2], rot[i, 0, 0])
-        elif format == 'z':
-            theta[i, 2] = np.arctan2(rot[i, 1, 0], rot[i, 0, 0])
+
+    theta = np.zeros((rot.shape[0], 3))
+    if format == 'x':
+        theta[:, 0] = np.arctan2(rot[:, 2, 1], rot[:, 1, 1])
+    elif format == 'y':
+        theta[:, 1] = np.arctan2(rot[:, 0, 2], rot[:, 0, 0])
+    elif format == 'z':
+        theta[:, 2] = np.arctan2(rot[:, 1, 0], rot[:, 0, 0])
+
     return theta[0] if single else theta
 
 
@@ -900,140 +903,177 @@ def rot2euler(
         last_euler = np.zeros((rot_num, 3))
 
     theta = last_euler.copy()
-    for i in range(rot_num):
-        r = rot[i]
-        # Proper
-        if format == 'xyx':
-            theta[i, 1] = np.arccos(np.clip(r[0, 0], -1.0, 1.0))
-            singular = np.abs(np.sin(theta[i, 1])) < eps
-            if singular:
-                theta13 = np.arctan2(r[2, 1], r[1, 1])
+
+    # Proper Euler angles
+    if format == 'xyx':
+        theta[:, 1] = np.arccos(np.clip(rot[:, 0, 0], -1.0, 1.0))
+        singular = np.abs(np.sin(theta[:, 1])) < eps
+        # Non-singular cases (vectorized)
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(rot[:, 1, 0], -rot[:, 2, 0]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(rot[:, 0, 1], rot[:, 0, 2]))
+        # Singular cases (loop only over singular points)
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            theta13 = np.arctan2(rot[i, 2, 1], rot[i, 1, 1])
+            theta[i, 2] = theta13 - theta[i, 0]
+
+    elif format == 'xzx':
+        theta[:, 1] = np.arccos(np.clip(rot[:, 0, 0], -1.0, 1.0))
+        singular = np.abs(np.sin(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(rot[:, 2, 0], rot[:, 1, 0]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(rot[:, 0, 2], -rot[:, 0, 1]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            theta13 = np.arctan2(rot[i, 2, 1], rot[i, 1, 1])
+            theta[i, 2] = theta13 - theta[i, 0]
+
+    elif format == 'yxy':
+        theta[:, 1] = np.arccos(np.clip(rot[:, 1, 1], -1.0, 1.0))
+        singular = np.abs(np.sin(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(rot[:, 0, 1], rot[:, 2, 1]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(rot[:, 1, 0], -rot[:, 1, 2]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            theta13 = np.arctan2(rot[i, 0, 2], rot[i, 0, 0])
+            theta[i, 2] = theta13 - theta[i, 0]
+
+    elif format == 'yzy':
+        theta[:, 1] = np.arccos(np.clip(rot[:, 1, 1], -1.0, 1.0))
+        singular = np.abs(np.sin(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(rot[:, 2, 1], -rot[:, 0, 1]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(rot[:, 1, 2], rot[:, 1, 0]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            theta13 = np.arctan2(rot[i, 0, 2], rot[i, 0, 0])
+            theta[i, 2] = theta13 - theta[i, 0]
+
+    elif format == 'zxz':
+        theta[:, 1] = np.arccos(np.clip(rot[:, 2, 2], -1.0, 1.0))
+        singular = np.abs(np.sin(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(rot[:, 0, 2], -rot[:, 1, 2]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(rot[:, 2, 0], rot[:, 2, 1]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            theta13 = np.arctan2(rot[i, 1, 0], rot[i, 0, 0])
+            theta[i, 2] = theta13 - theta[i, 0]
+
+    elif format == 'zyz':
+        theta[:, 1] = np.arccos(np.clip(rot[:, 2, 2], -1.0, 1.0))
+        singular = np.abs(np.sin(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(rot[:, 1, 2], rot[:, 0, 2]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(rot[:, 2, 1], -rot[:, 2, 0]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            theta13 = np.arctan2(rot[i, 1, 0], rot[i, 0, 0])
+            theta[i, 2] = theta13 - theta[i, 0]
+
+    # Tait-Bryan angles
+    elif format == 'xyz':
+        theta[:, 1] = np.arcsin(np.clip(rot[:, 0, 2], -1.0, 1.0))
+        singular = np.abs(np.cos(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(-rot[:, 1, 2], rot[:, 2, 2]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(-rot[:, 0, 1], rot[:, 0, 0]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            if theta[i, 1] > 1.5:
+                theta13 = np.arctan2(rot[i, 1, 0], rot[i, 1, 1])
                 theta[i, 2] = theta13 - theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(r[1, 0], -r[2, 0])
-                theta[i, 2] = np.arctan2(r[0, 1], r[0, 2]) - theta[i, 0]
-        elif format == 'xzx':
-            theta[i, 1] = np.arccos(np.clip(r[0, 0], -1.0, 1.0))
-            singular = np.abs(np.sin(theta[i, 1])) < eps
-            if singular:
-                theta13 = np.arctan2(r[2, 1], r[1, 1])
+            elif theta[i, 1] < -1.5:
+                theta3_1 = np.arctan2(rot[i, 1, 0], rot[i, 1, 1])
+                theta[i, 2] = theta3_1 + theta[i, 0]
+
+    elif format == 'xzy':
+        theta[:, 1] = np.arcsin(np.clip(-rot[:, 0, 1], -1.0, 1.0))
+        singular = np.abs(np.cos(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(rot[:, 2, 1], rot[:, 1, 1]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(rot[:, 0, 2], rot[:, 0, 0]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            if theta[i, 1] > 1.5:
+                theta3_1 = np.arctan2(rot[i, 1, 2], rot[i, 1, 0])
+                theta[i, 2] = theta3_1 + theta[i, 0]
+            elif theta[i, 1] < -1.5:
+                theta13 = np.arctan2(-rot[i, 1, 2], -rot[i, 1, 0])
                 theta[i, 2] = theta13 - theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(r[2, 0], r[1, 0])
-                theta[i, 2] = np.arctan2(r[0, 2], -r[0, 1])
-        elif format == 'yxy':
-            theta[i, 1] = np.arccos(np.clip(r[1, 1], -1.0, 1.0))
-            singular = np.abs(np.sin(theta[i, 1])) < eps
-            if singular:
-                theta13 = np.arctan2(r[0, 2], r[0, 0])
+
+    elif format == 'yxz':
+        theta[:, 1] = np.arcsin(np.clip(-rot[:, 1, 2], -1.0, 1.0))
+        singular = np.abs(np.cos(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(rot[:, 0, 2], rot[:, 2, 2]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(rot[:, 1, 0], rot[:, 1, 1]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            if theta[i, 1] > 1.5:
+                theta3_1 = np.arctan2(rot[i, 2, 0], rot[i, 2, 1])
+                theta[i, 2] = theta3_1 + theta[i, 0]
+            elif theta[i, 1] < -1.5:
+                theta13 = np.arctan2(-rot[i, 2, 0], -rot[i, 2, 1])
                 theta[i, 2] = theta13 - theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(r[0, 1], r[2, 1])
-                theta[i, 2] = np.arctan2(r[1, 0], -r[1, 2])
-        elif format == 'yzy':
-            theta[i, 1] = np.arccos(np.clip(r[1, 1], -1.0, 1.0))
-            singular = np.abs(np.sin(theta[i, 1])) < eps
-            if singular:
-                theta13 = np.arctan2(r[0, 2], r[0, 0])
+
+    elif format == 'yzx':
+        theta[:, 1] = np.arcsin(np.clip(rot[:, 1, 0], -1.0, 1.0))
+        singular = np.abs(np.cos(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(-rot[:, 2, 0], rot[:, 0, 0]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(-rot[:, 1, 2], rot[:, 1, 1]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            if theta[i, 1] > 1.5:
+                theta13 = np.arctan2(rot[i, 2, 1], rot[i, 2, 2])
                 theta[i, 2] = theta13 - theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(r[2, 1], -r[0, 1])
-                theta[i, 2] = np.arctan2(r[1, 2], r[1, 0])
-        elif format == 'zxz':
-            theta[i, 1] = np.arccos(np.clip(r[2, 2], -1.0, 1.0))
-            singular = np.abs(np.sin(theta[i, 1])) < eps
-            if singular:
-                theta13 = np.arctan2(r[1, 0], r[0, 0])
+            elif theta[i, 1] < -1.5:
+                theta3_1 = np.arctan2(rot[i, 2, 1], rot[i, 2, 2])
+                theta[i, 2] = theta3_1 + theta[i, 0]
+
+    elif format == 'zxy':
+        theta[:, 1] = np.arcsin(np.clip(rot[:, 2, 1], -1.0, 1.0))
+        singular = np.abs(np.cos(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(-rot[:, 0, 1], rot[:, 1, 1]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(-rot[:, 2, 0], rot[:, 2, 2]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            if theta[i, 1] > 1.5:
+                theta13 = np.arctan2(rot[i, 1, 0], rot[i, 0, 0])
                 theta[i, 2] = theta13 - theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(r[0, 2], -r[1, 2])
-                theta[i, 2] = np.arctan2(r[2, 0], r[2, 1]) - theta[i, 0]
-        elif format == 'zyz':
-            theta[i, 1] = np.arccos(np.clip(r[2, 2], -1.0, 1.0))
-            singular = np.abs(np.sin(theta[i, 1])) < eps
-            if singular:
-                theta13 = np.arctan2(r[1, 0], r[0, 0])
+            elif theta[i, 1] < -1.5:
+                theta3_1 = np.arctan2(-rot[i, 1, 0], rot[i, 0, 0])
+                theta[i, 2] = theta3_1 + theta[i, 0]
+
+    elif format == 'zyx':
+        theta[:, 1] = np.arcsin(np.clip(-rot[:, 2, 0], -1.0, 1.0))
+        singular = np.abs(np.cos(theta[:, 1])) < eps
+        theta[:, 0] = np.where(singular, theta[:, 0],
+                               np.arctan2(rot[:, 1, 0], rot[:, 0, 0]))
+        theta[:, 2] = np.where(singular, theta[:, 2],
+                               np.arctan2(rot[:, 2, 1], rot[:, 2, 2]))
+        singular_idx = np.where(singular)[0]
+        for i in singular_idx:
+            if theta[i, 1] > 1.5:
+                theta3_1 = np.arctan2(rot[i, 0, 1], rot[i, 1, 1])
+                theta[i, 2] = theta3_1 + theta[i, 0]
+            elif theta[i, 1] < -1.5:
+                theta13 = np.arctan2(-rot[i, 0, 1], rot[i, 1, 1])
                 theta[i, 2] = theta13 - theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(r[1, 2], r[0, 2])
-                theta[i, 2] = np.arctan2(r[2, 1], -r[2, 0])
-        # Tait-Bryan
-        elif format == 'xyz':
-            theta[i, 1] = np.arcsin(np.clip(r[0, 2], -1.0, 1.0))
-            singular = np.abs(np.cos(theta[i, 1])) < eps
-            if singular:
-                if theta[i, 1] > 1.5:
-                    theta13 = np.arctan2(r[1, 0], r[1, 1])
-                    theta[i, 2] = theta13 - theta[i, 0]
-                elif theta[i, 1] < -1.5:
-                    theta3_1 = np.arctan2(r[1, 0], r[1, 1])
-                    theta[i, 2] = theta3_1 + theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(-r[1, 2], r[2, 2])
-                theta[i, 2] = np.arctan2(-r[0, 1], r[0, 0])
-        elif format == 'xzy':
-            theta[i, 1] = np.arcsin(np.clip(-r[0, 1], -1.0, 1.0))
-            singular = np.abs(np.cos(theta[i, 1])) < eps
-            if singular:
-                if theta[i, 1] > 1.5:
-                    theta3_1 = np.arctan2(r[1, 2], r[1, 0])
-                    theta[i, 2] = theta3_1 + theta[i, 0]
-                elif theta[i, 1] < -1.5:
-                    theta13 = np.arctan2(-r[1, 2], -r[1, 0])
-                    theta[i, 2] = theta13 - theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(r[2, 1], r[1, 1])
-                theta[i, 2] = np.arctan2(r[0, 2], r[0, 0])
-        elif format == 'yxz':
-            theta[i, 1] = np.arcsin(np.clip(-r[1, 2], -1.0, 1.0))
-            singular = np.abs(np.cos(theta[i, 1])) < eps
-            if singular:
-                if theta[i, 1] > 1.5:
-                    theta3_1 = np.arctan2(r[2, 0], r[2, 1])
-                    theta[i, 2] = theta3_1 + theta[i, 0]
-                elif theta[i, 1] < -1.5:
-                    theta13 = np.arctan2(-r[2, 0], -r[2, 1])
-                    theta[i, 2] = theta13 - theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(r[0, 2], r[2, 2])
-                theta[i, 2] = np.arctan2(r[1, 0], r[1, 1])
-        elif format == 'yzx':
-            theta[i, 1] = np.arcsin(np.clip(r[1, 0], -1.0, 1.0))
-            singular = np.abs(np.cos(theta[i, 1])) < eps
-            if singular:
-                if theta[i, 1] > 1.5:
-                    theta13 = np.arctan2(r[2, 1], r[2, 2])
-                    theta[i, 2] = theta13 - theta[i, 0]
-                elif theta[i, 1] < -1.5:
-                    theta3_1 = np.arctan2(r[2, 1], r[2, 2])
-                    theta[i, 2] = theta3_1 + theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(-r[2, 0], r[0, 0])
-                theta[i, 2] = np.arctan2(-r[1, 2], r[1, 1])
-        elif format == 'zxy':
-            theta[i, 1] = np.arcsin(np.clip(r[2, 1], -1.0, 1.0))
-            singular = np.abs(np.cos(theta[i, 1])) < eps
-            if singular:
-                if theta[i, 1] > 1.5:
-                    theta13 = np.arctan2(r[1, 0], r[0, 0])
-                    theta[i, 2] = theta13 - theta[i, 0]
-                elif theta[i, 1] < -1.5:
-                    theta3_1 = np.arctan2(-r[1, 0], r[0, 0])
-                    theta[i, 2] = theta3_1 + theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(-r[0, 1], r[1, 1])
-                theta[i, 2] = np.arctan2(-r[2, 0], r[2, 2])
-        elif format == 'zyx':
-            theta[i, 1] = np.arcsin(np.clip(-r[2, 0], -1.0, 1.0))
-            singular = np.abs(np.cos(theta[i, 1])) < eps
-            if singular:
-                if theta[i, 1] > 1.5:
-                    theta3_1 = np.arctan2(r[0, 1], r[1, 1])
-                    theta[i, 2] = theta3_1 + theta[i, 0]
-                elif theta[i, 1] < -1.5:
-                    theta13 = np.arctan2(-r[0, 1], r[1, 1])
-                    theta[i, 2] = theta13 - theta[i, 0]
-            else:
-                theta[i, 0] = np.arctan2(r[1, 0], r[0, 0])
-                theta[i, 2] = np.arctan2(r[2, 1], r[2, 2])
+
     return theta[0] if single else theta

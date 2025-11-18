@@ -17,8 +17,6 @@ from .ctrl_util import HexCtrlUtilPidJoint
 from .ctrl_util import HexCtrlUtilIntJoint
 from .ctrl_util import HexCtrlUtilMitWork
 from .ctrl_util import HexCtrlUtilIntWork
-from .hdf5_reader import HexHdf5Reader
-from .hdf5_writer import HexHdf5Writer
 
 # basic
 from .math_utils import hat
@@ -76,8 +74,6 @@ __all__ = [
     'HexCtrlUtilIntWork',
     'HexCtrlUtilPid',
     'HexCtrlUtilInt',
-    'HexHdf5Reader',
-    'HexHdf5Writer',
 
     # math basic
     'hat',
@@ -118,5 +114,20 @@ __all__ = [
     'euler2rot',
     'rot2euler',
 ]
+
+# Check optional dependencies availability
+from importlib.util import find_spec
+
+_HAS_H5PY = find_spec("h5py") is not None
+_HAS_HDF5PLUGIN = find_spec("hdf5plugin") is not None
+
+# Optional: hdf5
+if _HAS_H5PY and _HAS_HDF5PLUGIN:
+    from .hdf5_reader import HexHdf5Reader
+    from .hdf5_writer import HexHdf5Writer
+    __all__.extend([
+        'HexHdf5Reader',
+        'HexHdf5Writer',
+    ])
 
 # print("#### Thanks for using HEXFELLOW Utilities :) ####")

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hex_robo_utils"
-version = "0.1.20"
+version = "0.1.21"
 description = "HEXFELLOW Robotics Utilities"
 readme = "README.md"
 license = "Apache-2.0"
@@ -15,25 +15,22 @@ maintainers = [
 ]
 keywords = ["hex_robo_utils"]
 requires-python = ">=3.8"
-dependencies = [
-  "numpy>=2.2.6",
-  "pin==3.4.0",
-  "h5py>=3.14.0",
-  "hdf5plugin>=5.1.0",
-]
+dependencies = ["numpy>=2.2.6", "pin==3.4.0"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Operating System :: POSIX :: Linux",
 ]
+
+[project.optional-dependencies]
+hdf5 = ["h5py>=3.14.0", "hdf5plugin>=5.1.0"]
+all = ["h5py>=3.14.0", "hdf5plugin>=5.1.0"]
 
 [project.urls]
 Homepage = "https://github.com/hexfellow/hex_robo_utils"
