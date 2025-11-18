@@ -65,87 +65,88 @@ def angle_norm(rad):
     return normed_rad
 
 
+def vec_norm(vec: np.ndarray) -> np.ndarray:
+    assert (vec.ndim == 1 and vec.shape == (3, )) or (
+        vec.ndim == 2 and vec.shape[1] == 3), "vec_norm vec shape err"
+
+    single = vec.ndim == 1
+    if single:
+        vec = vec[np.newaxis, :]
+
+    normed_vec = vec / np.linalg.norm(vec, axis=1, keepdims=True)
+    return normed_vec[0] if single else normed_vec
+
+
+def quat_norm(quat: np.ndarray) -> np.ndarray:
+    assert (quat.ndim == 1 and quat.shape == (4, )) or (
+        quat.ndim == 2 and quat.shape[1] == 4), "quat_norm quat shape err"
+
+    single = quat.ndim == 1
+    if single:
+        quat = quat[np.newaxis, :]
+
+    # Normalize quaternion
+    normed_quat = quat / np.linalg.norm(quat, axis=1, keepdims=True)
+
+    # Ensure first component (w) is non-negative using vectorized operation
+    sign = np.where(normed_quat[:, 0:1] < 0.0, -1.0, 1.0)
+    normed_quat = normed_quat * sign
+
+    return normed_quat[0] if single else normed_quat
+
+
 def quat_slerp(q1: np.ndarray, q2: np.ndarray, t) -> np.ndarray:
     assert ((q1.ndim == 1 and q1.shape == (4, ))
             or (q1.ndim == 2 and q1.shape[1] == 4)), "quat_slerp q1 shape err"
     assert ((q2.ndim == 1 and q2.shape == (4, ))
             or (q2.ndim == 2 and q2.shape[1] == 4)), "quat_slerp q2 shape err"
     assert q1.ndim == q2.ndim, "quat_slerp q1 and q2 must have same ndim"
-    if q1.ndim == 2:
+    
+    single = q1.ndim == 1
+    if single:
+        assert isinstance(
+            t, (int, float)), "quat_slerp t must be scalar for 1D quat"
+        q1 = q1[np.newaxis, :]
+        q2 = q2[np.newaxis, :]
+        t = np.array([t])
+    else:
         assert q1.shape[0] == q2.shape[0], "quat_slerp batch size mismatch"
         assert (isinstance(t, np.ndarray) and t.ndim == 1 and
                 t.shape[0] == q1.shape[0]) or isinstance(t, (int, float)), \
             "quat_slerp t shape err"
-
-    if q1.ndim == 1:
-        assert isinstance(
-            t, (int, float)), "quat_slerp t must be scalar for 1D quat"
-        # normalize
-        q1_norm = q1 / np.linalg.norm(q1)
-        if q1_norm[0] < 0.0:
-            q1_norm = -q1_norm
-        q2_norm = q2 / np.linalg.norm(q2)
-        if q2_norm[0] < 0.0:
-            q2_norm = -q2_norm
-
-        # dot
-        dot = np.dot(q1_norm, q2_norm)
-        if dot < 0.0:
-            q2_norm = -q2_norm
-            dot = -dot
-        dot = np.clip(dot, -1.0, 1.0)
-        theta = np.arccos(dot)
-
-        # slerp
-        if np.fabs(theta) < 1e-6:
-            q = q1_norm + t * (q2_norm - q1_norm)
-            q = q / np.linalg.norm(q)
-            return q
-
-        sin_theta = np.sin(theta)
-        q1_factor = np.sin((1 - t) * theta) / sin_theta
-        q2_factor = np.sin(t * theta) / sin_theta
-        q = q1_factor * q1_norm + q2_factor * q2_norm
-        return q
-    else:
-        # Batch processing: input shape (N, 4), (N, 4), (N,) or scalar -> output shape (N, 4)
         if isinstance(t, (int, float)):
             t = np.full(q1.shape[0], t)
 
-        # normalize
-        q1_norm = q1 / np.linalg.norm(q1, axis=1, keepdims=True)
-        neg_mask1 = q1_norm[:, 0] < 0.0
-        q1_norm[neg_mask1] = -q1_norm[neg_mask1]
-        q2_norm = q2 / np.linalg.norm(q2, axis=1, keepdims=True)
-        neg_mask2 = q2_norm[:, 0] < 0.0
-        q2_norm[neg_mask2] = -q2_norm[neg_mask2]
+    # Normalize using quat_norm
+    q1_norm = quat_norm(q1)
+    q2_norm = quat_norm(q2)
 
-        # dot
-        dot = np.sum(q1_norm * q2_norm, axis=1)
-        neg_dot_mask = dot < 0.0
-        q2_norm[neg_dot_mask] = -q2_norm[neg_dot_mask]
-        dot[neg_dot_mask] = -dot[neg_dot_mask]
-        dot = np.clip(dot, -1.0, 1.0)
-        theta = np.arccos(dot)
+    # dot
+    dot = np.sum(q1_norm * q2_norm, axis=1)
+    neg_dot_mask = dot < 0.0
+    q2_norm[neg_dot_mask] = -q2_norm[neg_dot_mask]
+    dot[neg_dot_mask] = -dot[neg_dot_mask]
+    dot = np.clip(dot, -1.0, 1.0)
+    theta = np.arccos(dot)
 
-        # slerp
-        small_mask = np.fabs(theta) < 1e-6
-        q = np.zeros_like(q1)
+    # slerp
+    small_mask = np.fabs(theta) < 1e-6
+    q = np.zeros_like(q1)
 
-        if np.any(small_mask):
-            q[small_mask] = q1_norm[small_mask] + t[small_mask, np.newaxis] * (
-                q2_norm[small_mask] - q1_norm[small_mask])
-            q[small_mask] = q[small_mask] / np.linalg.norm(
-                q[small_mask], axis=1, keepdims=True)
+    if np.any(small_mask):
+        q[small_mask] = q1_norm[small_mask] + t[small_mask, np.newaxis] * (
+            q2_norm[small_mask] - q1_norm[small_mask])
+        q[small_mask] = quat_norm(q[small_mask])
 
-        if np.any(~small_mask):
-            sin_theta = np.sin(theta[~small_mask])
-            q1_factor = np.sin(
-                (1 - t[~small_mask]) * theta[~small_mask]) / sin_theta
-            q2_factor = np.sin(t[~small_mask] * theta[~small_mask]) / sin_theta
-            q[~small_mask] = (q1_factor[:, np.newaxis] * q1_norm[~small_mask] +
-                              q2_factor[:, np.newaxis] * q2_norm[~small_mask])
-        return q
+    if np.any(~small_mask):
+        sin_theta = np.sin(theta[~small_mask])
+        q1_factor = np.sin(
+            (1 - t[~small_mask]) * theta[~small_mask]) / sin_theta
+        q2_factor = np.sin(t[~small_mask] * theta[~small_mask]) / sin_theta
+        q[~small_mask] = (q1_factor[:, np.newaxis] * q1_norm[~small_mask] +
+                          q2_factor[:, np.newaxis] * q2_norm[~small_mask])
+    
+    return q[0] if single else q
 
 
 def quat_mul(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
@@ -154,68 +155,45 @@ def quat_mul(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
     assert ((q2.ndim == 1 and q2.shape == (4, ))
             or (q2.ndim == 2 and q2.shape[1] == 4)), "quat_mul q2 shape err"
     assert q1.ndim == q2.ndim, "quat_mul q1 and q2 must have same ndim"
-    if q1.ndim == 2:
+    
+    single = q1.ndim == 1
+    if single:
+        q1 = q1[np.newaxis, :]
+        q2 = q2[np.newaxis, :]
+    else:
         assert q1.shape[0] == q2.shape[0], "quat_mul batch size mismatch"
 
-    # normalize
-    if q1.ndim == 1:
-        q1_norm = q1 / np.linalg.norm(q1)
-        if q1_norm[0] < 0.0:
-            q1_norm = -q1_norm
-        q2_norm = q2 / np.linalg.norm(q2)
-        if q2_norm[0] < 0.0:
-            q2_norm = -q2_norm
+    # Normalize using quat_norm
+    q1_norm = quat_norm(q1)
+    q2_norm = quat_norm(q2)
 
-        # mul
-        w1, x1, y1, z1 = q1_norm
-        w2, x2, y2, z2 = q2_norm
-        w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
-        x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
-        y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
-        z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
-        q = np.array([w, x, y, z])
-    else:
-        # Batch processing
-        q1_norm = q1 / np.linalg.norm(q1, axis=1, keepdims=True)
-        neg_mask1 = q1_norm[:, 0] < 0.0
-        q1_norm[neg_mask1] = -q1_norm[neg_mask1]
-        q2_norm = q2 / np.linalg.norm(q2, axis=1, keepdims=True)
-        neg_mask2 = q2_norm[:, 0] < 0.0
-        q2_norm[neg_mask2] = -q2_norm[neg_mask2]
-
-        # mul
-        w1, x1, y1, z1 = q1_norm[:, 0], q1_norm[:, 1], q1_norm[:,
-                                                               2], q1_norm[:,
-                                                                           3]
-        w2, x2, y2, z2 = q2_norm[:, 0], q2_norm[:, 1], q2_norm[:,
-                                                               2], q2_norm[:,
-                                                                           3]
-        w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
-        x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
-        y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
-        z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
-        q = np.stack([w, x, y, z], axis=1)
-    return q
+    # mul
+    w1, x1, y1, z1 = q1_norm[:, 0], q1_norm[:, 1], q1_norm[:, 2], q1_norm[:, 3]
+    w2, x2, y2, z2 = q2_norm[:, 0], q2_norm[:, 1], q2_norm[:, 2], q2_norm[:, 3]
+    w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+    y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+    z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+    q = np.stack([w, x, y, z], axis=1)
+    
+    return q[0] if single else q
 
 
 def quat_inv(quat: np.ndarray) -> np.ndarray:
     assert (quat.ndim == 1 and quat.shape == (4, )) or (
         quat.ndim == 2 and quat.shape[1] == 4), "quat_inv quat shape err"
 
-    if quat.ndim == 1:
-        q = quat / np.linalg.norm(quat)
-        if q[0] < 0.0:
-            q = -q
-        # inv
-        inv = np.array([q[0], -q[1], -q[2], -q[3]])
-    else:
-        # Batch processing: input shape (N, 4) -> output shape (N, 4)
-        q = quat / np.linalg.norm(quat, axis=1, keepdims=True)
-        neg_mask = q[:, 0] < 0.0
-        q[neg_mask] = -q[neg_mask]
-        # inv
-        inv = np.stack([q[:, 0], -q[:, 1], -q[:, 2], -q[:, 3]], axis=1)
-    return inv
+    single = quat.ndim == 1
+    if single:
+        quat = quat[np.newaxis, :]
+    
+    # Normalize using quat_norm
+    q = quat_norm(quat)
+    
+    # inv
+    inv = np.stack([q[:, 0], -q[:, 1], -q[:, 2], -q[:, 3]], axis=1)
+    
+    return inv[0] if single else inv
 
 
 def trans_inv(trans: np.ndarray) -> np.ndarray:
@@ -223,410 +201,304 @@ def trans_inv(trans: np.ndarray) -> np.ndarray:
         trans.ndim == 3
         and trans.shape[1:] == (4, 4)), "trans_inv trans shape err"
 
-    if trans.ndim == 2:
-        pos = trans[:3, 3]
-        rot = trans[:3, :3]
+    single = trans.ndim == 2
+    if single:
+        trans = trans[np.newaxis, ...]
 
-        # inv
-        inv = np.eye(4)
-        inv[:3, :3] = rot.T
-        inv[:3, 3] = -inv[:3, :3] @ pos
-        return inv
-    else:
-        # Batch processing: input shape (N, 4, 4) -> output shape (N, 4, 4)
-        pos = trans[:, :3, 3]
-        rot = trans[:, :3, :3]
+    pos = trans[:, :3, 3]
+    rot = trans[:, :3, :3]
 
-        # inv
-        inv = np.zeros_like(trans)
-        inv[:, :3, :3] = rot.transpose(0, 2, 1)
-        inv[:, :3, 3] = -np.einsum('ijk,ik->ij', inv[:, :3, :3], pos)
-        inv[:, 3, :3] = 0.0
-        inv[:, 3, 3] = 1.0
-        return inv
+    # inv
+    inv = np.zeros_like(trans)
+    inv[:, :3, :3] = rot.transpose(0, 2, 1)
+    inv[:, :3, 3] = -np.einsum('ijk,ik->ij', inv[:, :3, :3], pos)
+    inv[:, 3, :3] = 0.0
+    inv[:, 3, 3] = 1.0
+
+    return inv[0] if single else inv
 
 
 def rot2quat(rot: np.ndarray) -> np.ndarray:
     assert (rot.ndim == 2 and rot.shape == (3, 3)) or (
         rot.ndim == 3 and rot.shape[1:] == (3, 3)), "rot2quat rot shape err"
 
-    if rot.ndim == 2:
-        qw, qx, qy, qz = 1, 0, 0, 0
-        trace = np.trace(rot)
-        if trace > 0:
-            temp = 2.0 * np.sqrt(1 + trace)
-            qw = 0.25 * temp
-            qx = (rot[2, 1] - rot[1, 2]) / temp
-            qy = (rot[0, 2] - rot[2, 0]) / temp
-            qz = (rot[1, 0] - rot[0, 1]) / temp
-        else:
-            if rot[0, 0] > rot[1, 1] and rot[0, 0] > rot[2, 2]:
-                temp = 2.0 * np.sqrt(1 + rot[0, 0] - rot[1, 1] - rot[2, 2])
-                qw = (rot[2, 1] - rot[1, 2]) / temp
-                qx = 0.25 * temp
-                qy = (rot[1, 0] + rot[0, 1]) / temp
-                qz = (rot[0, 2] + rot[2, 0]) / temp
-            elif rot[1, 1] > rot[2, 2]:
-                temp = 2.0 * np.sqrt(1 + rot[1, 1] - rot[0, 0] - rot[2, 2])
-                qw = (rot[0, 2] - rot[2, 0]) / temp
-                qx = (rot[1, 0] + rot[0, 1]) / temp
-                qy = 0.25 * temp
-                qz = (rot[2, 1] + rot[1, 2]) / temp
-            else:
-                temp = 2.0 * np.sqrt(1 + rot[2, 2] - rot[0, 0] - rot[1, 1])
-                qw = (rot[1, 0] - rot[0, 1]) / temp
-                qx = (rot[0, 2] + rot[2, 0]) / temp
-                qy = (rot[2, 1] + rot[1, 2]) / temp
-                qz = 0.25 * temp
+    single = rot.ndim == 2
+    if single:
+        rot = rot[np.newaxis, ...]
 
-        return np.array([qw, qx, qy, qz])
-    else:
-        # Batch processing: input shape (N, 3, 3) -> output shape (N, 4)
-        num = rot.shape[0]
-        quat = np.zeros((num, 4))
-        trace = np.trace(rot, axis1=1, axis2=2)
+    # Batch processing: input shape (N, 3, 3) -> output shape (N, 4)
+    num = rot.shape[0]
+    quat = np.zeros((num, 4))
+    trace = np.trace(rot, axis1=1, axis2=2)
 
-        # Case 1: trace > 0
-        mask1 = trace > 0
-        if np.any(mask1):
-            temp = 2.0 * np.sqrt(1 + trace[mask1])
-            quat[mask1, 0] = 0.25 * temp
-            quat[mask1, 1] = (rot[mask1, 2, 1] - rot[mask1, 1, 2]) / temp
-            quat[mask1, 2] = (rot[mask1, 0, 2] - rot[mask1, 2, 0]) / temp
-            quat[mask1, 3] = (rot[mask1, 1, 0] - rot[mask1, 0, 1]) / temp
+    # Case 1: trace > 0
+    mask1 = trace > 0
+    if np.any(mask1):
+        temp = 2.0 * np.sqrt(1 + trace[mask1])
+        quat[mask1, 0] = 0.25 * temp
+        quat[mask1, 1] = (rot[mask1, 2, 1] - rot[mask1, 1, 2]) / temp
+        quat[mask1, 2] = (rot[mask1, 0, 2] - rot[mask1, 2, 0]) / temp
+        quat[mask1, 3] = (rot[mask1, 1, 0] - rot[mask1, 0, 1]) / temp
 
-        # Case 2: trace <= 0
-        mask2 = ~mask1
-        if np.any(mask2):
-            rot_masked = rot[mask2]
-            diag = np.diagonal(rot_masked, axis1=1, axis2=2)
-            mask2a = (diag[:, 0] > diag[:, 1]) & (diag[:, 0] > diag[:, 2])
-            mask2b = (~mask2a) & (diag[:, 1] > diag[:, 2])
-            mask2c = (~mask2a) & (~mask2b)
+    # Case 2: trace <= 0
+    mask2 = ~mask1
+    if np.any(mask2):
+        diag = np.diagonal(rot, axis1=1, axis2=2)
+        mask2a = mask2 & (diag[:, 0] > diag[:, 1]) & (diag[:, 0] > diag[:, 2])
+        mask2b = mask2 & (~mask2a) & (diag[:, 1] > diag[:, 2])
+        mask2c = mask2 & (~mask2a) & (~mask2b)
 
-            # Case 2a: rot[0,0] > rot[1,1] and rot[0,0] > rot[2,2]
-            if np.any(mask2a):
-                idx2a = np.where(mask2)[0][mask2a]
-                temp = 2.0 * np.sqrt(1 + diag[mask2a, 0] - diag[mask2a, 1] -
-                                     diag[mask2a, 2])
-                quat[idx2a, 0] = (rot_masked[mask2a, 2, 1] -
-                                  rot_masked[mask2a, 1, 2]) / temp
-                quat[idx2a, 1] = 0.25 * temp
-                quat[idx2a, 2] = (rot_masked[mask2a, 1, 0] +
-                                  rot_masked[mask2a, 0, 1]) / temp
-                quat[idx2a, 3] = (rot_masked[mask2a, 0, 2] +
-                                  rot_masked[mask2a, 2, 0]) / temp
+        # Case 2a: rot[0,0] > rot[1,1] and rot[0,0] > rot[2,2]
+        if np.any(mask2a):
+            temp = 2.0 * np.sqrt(1 + diag[mask2a, 0] - diag[mask2a, 1] -
+                                 diag[mask2a, 2])
+            quat[mask2a, 0] = (rot[mask2a, 2, 1] - rot[mask2a, 1, 2]) / temp
+            quat[mask2a, 1] = 0.25 * temp
+            quat[mask2a, 2] = (rot[mask2a, 1, 0] + rot[mask2a, 0, 1]) / temp
+            quat[mask2a, 3] = (rot[mask2a, 0, 2] + rot[mask2a, 2, 0]) / temp
 
-            # Case 2b: rot[1,1] > rot[2,2]
-            if np.any(mask2b):
-                idx2b = np.where(mask2)[0][mask2b]
-                temp = 2.0 * np.sqrt(1 + diag[mask2b, 1] - diag[mask2b, 0] -
-                                     diag[mask2b, 2])
-                quat[idx2b, 0] = (rot_masked[mask2b, 0, 2] -
-                                  rot_masked[mask2b, 2, 0]) / temp
-                quat[idx2b, 1] = (rot_masked[mask2b, 1, 0] +
-                                  rot_masked[mask2b, 0, 1]) / temp
-                quat[idx2b, 2] = 0.25 * temp
-                quat[idx2b, 3] = (rot_masked[mask2b, 2, 1] +
-                                  rot_masked[mask2b, 1, 2]) / temp
+        # Case 2b: rot[1,1] > rot[2,2]
+        if np.any(mask2b):
+            temp = 2.0 * np.sqrt(1 + diag[mask2b, 1] - diag[mask2b, 0] -
+                                 diag[mask2b, 2])
+            quat[mask2b, 0] = (rot[mask2b, 0, 2] - rot[mask2b, 2, 0]) / temp
+            quat[mask2b, 1] = (rot[mask2b, 1, 0] + rot[mask2b, 0, 1]) / temp
+            quat[mask2b, 2] = 0.25 * temp
+            quat[mask2b, 3] = (rot[mask2b, 2, 1] + rot[mask2b, 1, 2]) / temp
 
-            # Case 2c: rot[2,2] >= rot[0,0] and rot[2,2] >= rot[1,1]
-            if np.any(mask2c):
-                idx2c = np.where(mask2)[0][mask2c]
-                temp = 2.0 * np.sqrt(1 + diag[mask2c, 2] - diag[mask2c, 0] -
-                                     diag[mask2c, 1])
-                quat[idx2c, 0] = (rot_masked[mask2c, 1, 0] -
-                                  rot_masked[mask2c, 0, 1]) / temp
-                quat[idx2c, 1] = (rot_masked[mask2c, 0, 2] +
-                                  rot_masked[mask2c, 2, 0]) / temp
-                quat[idx2c, 2] = (rot_masked[mask2c, 2, 1] +
-                                  rot_masked[mask2c, 1, 2]) / temp
-                quat[idx2c, 3] = 0.25 * temp
+        # Case 2c: rot[2,2] >= rot[0,0] and rot[2,2] >= rot[1,1]
+        if np.any(mask2c):
+            temp = 2.0 * np.sqrt(1 + diag[mask2c, 2] - diag[mask2c, 0] -
+                                 diag[mask2c, 1])
+            quat[mask2c, 0] = (rot[mask2c, 1, 0] - rot[mask2c, 0, 1]) / temp
+            quat[mask2c, 1] = (rot[mask2c, 0, 2] + rot[mask2c, 2, 0]) / temp
+            quat[mask2c, 2] = (rot[mask2c, 2, 1] + rot[mask2c, 1, 2]) / temp
+            quat[mask2c, 3] = 0.25 * temp
 
-        return quat
+    return quat[0] if single else quat
 
 
 def rot2axis(rot: np.ndarray) -> Tuple[np.ndarray, float]:
     assert (rot.ndim == 2 and rot.shape == (3, 3)) or (
         rot.ndim == 3 and rot.shape[1:] == (3, 3)), "rot2axis rot shape err"
 
-    if rot.ndim == 2:
-        cos_theta = 0.5 * (np.trace(rot) - 1)
-        cos_theta = np.clip(cos_theta, -1.0, 1.0)
-        theta = np.arccos(cos_theta)
+    single = rot.ndim == 2
+    if single:
+        rot = rot[np.newaxis, ...]
 
-        if theta < 1e-6:
-            return np.array([1.0, 0.0, 0.0]), 0.0
-        else:
-            axis_matrix = (rot - rot.T) / (2 * np.sin(theta))
-            axis = vee(axis_matrix)
-        return axis, theta
-    else:
-        # Batch processing: input shape (N, 3, 3) -> output (N, 3), (N,)
-        cos_theta = 0.5 * (np.trace(rot, axis1=1, axis2=2) - 1)
-        cos_theta = np.clip(cos_theta, -1.0, 1.0)
-        theta = np.arccos(cos_theta)
+    cos_theta = 0.5 * (np.trace(rot, axis1=1, axis2=2) - 1)
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)
+    theta = np.arccos(cos_theta)
 
-        small_mask = theta < 1e-6
-        axis = np.zeros((rot.shape[0], 3))
-        axis[small_mask] = np.array([1.0, 0.0, 0.0])
+    small_mask = theta < 1e-6
+    axis = np.zeros((rot.shape[0], 3))
+    axis[small_mask] = np.array([1.0, 0.0, 0.0])
 
-        if np.any(~small_mask):
-            axis_matrix = (rot[~small_mask] -
-                           rot[~small_mask].transpose(0, 2, 1)) / (2 * np.sin(
-                               theta[~small_mask, np.newaxis, np.newaxis]))
-            axis[~small_mask] = vee(axis_matrix)
+    if np.any(~small_mask):
+        axis_matrix = (rot[~small_mask] -
+                       rot[~small_mask].transpose(0, 2, 1)) / (
+                           2 * np.sin(theta[~small_mask])[:, np.newaxis,
+                                                          np.newaxis])
+        axis[~small_mask] = vee(axis_matrix)
 
-        return axis, theta
+    return (axis[0], theta[0]) if single else (axis, theta)
 
 
 def rot2so3(rot: np.ndarray) -> np.ndarray:
     assert (rot.ndim == 2 and rot.shape == (3, 3)) or (
         rot.ndim == 3 and rot.shape[1:] == (3, 3)), "rot2so3 rot shape err"
 
+    single = rot.ndim == 2
     axis, theta = rot2axis(rot)
-    if rot.ndim == 2:
-        return theta * axis
-    else:
-        # Batch processing: theta is (N,), axis is (N, 3)
-        return theta[:, np.newaxis] * axis
+    return theta * axis if single else theta[:, np.newaxis] * axis
 
 
 def quat2rot(quat: np.ndarray) -> np.ndarray:
     assert (quat.ndim == 1 and quat.shape == (4, )) or (
         quat.ndim == 2 and quat.shape[1] == 4), "quat2rot quat shape err"
 
-    if quat.ndim == 1:
-        q = quat / np.linalg.norm(quat)
-        if q[0] < 0.0:
-            q = -q
+    single = quat.ndim == 1
+    if single:
+        quat = quat[np.newaxis, :]
+    
+    # Normalize using quat_norm
+    q = quat_norm(quat)
 
-        # temp vars
-        qx2 = q[1] * q[1]
-        qy2 = q[2] * q[2]
-        qz2 = q[3] * q[3]
-        qxqw = q[1] * q[0]
-        qyqw = q[2] * q[0]
-        qzqw = q[3] * q[0]
-        qxqy = q[1] * q[2]
-        qyqz = q[2] * q[3]
-        qzqx = q[3] * q[1]
+    # temp vars
+    qx2 = q[:, 1] * q[:, 1]
+    qy2 = q[:, 2] * q[:, 2]
+    qz2 = q[:, 3] * q[:, 3]
+    qxqw = q[:, 1] * q[:, 0]
+    qyqw = q[:, 2] * q[:, 0]
+    qzqw = q[:, 3] * q[:, 0]
+    qxqy = q[:, 1] * q[:, 2]
+    qyqz = q[:, 2] * q[:, 3]
+    qzqx = q[:, 3] * q[:, 1]
 
-        # rot
-        rot = np.array([
-            [
-                1 - 2 * (qy2 + qz2),
-                2 * (qxqy - qzqw),
-                2 * (qzqx + qyqw),
-            ],
-            [
-                2 * (qxqy + qzqw),
-                1 - 2 * (qx2 + qz2),
-                2 * (qyqz - qxqw),
-            ],
-            [
-                2 * (qzqx - qyqw),
-                2 * (qyqz + qxqw),
-                1 - 2 * (qx2 + qy2),
-            ],
-        ])
-    else:
-        # Batch processing: input shape (N, 4) -> output shape (N, 3, 3)
-        q = quat / np.linalg.norm(quat, axis=1, keepdims=True)
-        neg_mask = q[:, 0] < 0.0
-        q[neg_mask] = -q[neg_mask]
-
-        # temp vars
-        qx2 = q[:, 1] * q[:, 1]
-        qy2 = q[:, 2] * q[:, 2]
-        qz2 = q[:, 3] * q[:, 3]
-        qxqw = q[:, 1] * q[:, 0]
-        qyqw = q[:, 2] * q[:, 0]
-        qzqw = q[:, 3] * q[:, 0]
-        qxqy = q[:, 1] * q[:, 2]
-        qyqz = q[:, 2] * q[:, 3]
-        qzqx = q[:, 3] * q[:, 1]
-
-        # rot
-        num = q.shape[0]
-        rot = np.zeros((num, 3, 3))
-        rot[:, 0, 0] = 1 - 2 * (qy2 + qz2)
-        rot[:, 0, 1] = 2 * (qxqy - qzqw)
-        rot[:, 0, 2] = 2 * (qzqx + qyqw)
-        rot[:, 1, 0] = 2 * (qxqy + qzqw)
-        rot[:, 1, 1] = 1 - 2 * (qx2 + qz2)
-        rot[:, 1, 2] = 2 * (qyqz - qxqw)
-        rot[:, 2, 0] = 2 * (qzqx - qyqw)
-        rot[:, 2, 1] = 2 * (qyqz + qxqw)
-        rot[:, 2, 2] = 1 - 2 * (qx2 + qy2)
-    return rot
+    # rot
+    num = q.shape[0]
+    rot = np.zeros((num, 3, 3))
+    rot[:, 0, 0] = 1 - 2 * (qy2 + qz2)
+    rot[:, 0, 1] = 2 * (qxqy - qzqw)
+    rot[:, 0, 2] = 2 * (qzqx + qyqw)
+    rot[:, 1, 0] = 2 * (qxqy + qzqw)
+    rot[:, 1, 1] = 1 - 2 * (qx2 + qz2)
+    rot[:, 1, 2] = 2 * (qyqz - qxqw)
+    rot[:, 2, 0] = 2 * (qzqx - qyqw)
+    rot[:, 2, 1] = 2 * (qyqz + qxqw)
+    rot[:, 2, 2] = 1 - 2 * (qx2 + qy2)
+    
+    return rot[0] if single else rot
 
 
 def quat2axis(quat: np.ndarray) -> Tuple[np.ndarray, float]:
     assert (quat.ndim == 1 and quat.shape == (4, )) or (
         quat.ndim == 2 and quat.shape[1] == 4), "quat2axis quat shape err"
 
-    if quat.ndim == 1:
-        q = quat / np.linalg.norm(quat)
-        if q[0] < 0.0:
-            q = -q
+    single = quat.ndim == 1
+    if single:
+        quat = quat[np.newaxis, :]
+    
+    # Normalize using quat_norm
+    q = quat_norm(quat)
 
-        vec = q[1:]
-        norm_vec = np.linalg.norm(vec)
-        if norm_vec < 1e-6:
-            return np.array([1.0, 0.0, 0.0]), 0.0
+    vec = q[:, 1:]
+    norm_vec = np.linalg.norm(vec, axis=1)
+    small_mask = norm_vec < 1e-6
 
-        theta = 2 * np.arctan2(norm_vec, q[0])
-        axis = vec / norm_vec
-        return axis, theta
-    else:
-        # Batch processing: input shape (N, 4) -> output (N, 3), (N,)
-        q = quat / np.linalg.norm(quat, axis=1, keepdims=True)
-        neg_mask = q[:, 0] < 0.0
-        q[neg_mask] = -q[neg_mask]
+    axis = np.zeros((q.shape[0], 3))
+    axis[~small_mask] = vec_norm(vec[~small_mask])
+    axis[small_mask] = np.array([1.0, 0.0, 0.0])
 
-        vec = q[:, 1:]
-        norm_vec = np.linalg.norm(vec, axis=1)
-        small_mask = norm_vec < 1e-6
-
-        axis = np.zeros((q.shape[0], 3))
-        axis[~small_mask] = vec[~small_mask] / norm_vec[~small_mask,
-                                                        np.newaxis]
-        axis[small_mask] = np.array([1.0, 0.0, 0.0])
-
-        theta = np.zeros(q.shape[0])
-        theta[~small_mask] = 2 * np.arctan2(norm_vec[~small_mask],
-                                            q[~small_mask, 0])
-        return axis, theta
+    theta = np.zeros(q.shape[0])
+    theta[~small_mask] = 2 * np.arctan2(norm_vec[~small_mask],
+                                        q[~small_mask, 0])
+    
+    return (axis[0], theta[0]) if single else (axis, theta)
 
 
 def quat2so3(quat: np.ndarray) -> np.ndarray:
     assert (quat.ndim == 1 and quat.shape == (4, )) or (
         quat.ndim == 2 and quat.shape[1] == 4), "quat2so3 quat shape err"
 
+    single = quat.ndim == 1
     axis, theta = quat2axis(quat)
-    if quat.ndim == 1:
-        return theta * axis
-    else:
-        # Batch processing: theta is (N,), axis is (N, 3)
-        return theta[:, np.newaxis] * axis
+    
+    return theta * axis if single else theta[:, np.newaxis] * axis
 
 
 def axis2rot(axis: np.ndarray, theta) -> np.ndarray:
     assert (axis.ndim == 1 and axis.shape == (3, )) or (
         axis.ndim == 2 and axis.shape[1] == 3), "axis2rot axis shape err"
-    if axis.ndim == 1:
+    
+    single = axis.ndim == 1
+    if single:
         assert isinstance(
             theta, (int, float)), "axis2rot theta must be scalar for 1D axis"
+        axis = axis[np.newaxis, :]
+        theta = np.array([theta])
     else:
         assert (isinstance(theta, np.ndarray) and theta.ndim == 1 and
                 theta.shape[0] == axis.shape[0]) or isinstance(theta, (int, float)), \
             "axis2rot theta shape err"
-
-    if axis.ndim == 1:
-        if theta < 1e-6:
-            return np.eye(3)
-
-        axis_matrix = hat(axis)
-        rot = np.eye(3) + np.sin(theta) * axis_matrix + (1 - np.cos(theta)) * (
-            axis_matrix @ axis_matrix)
-        return rot
-    else:
-        # Batch processing: input shape (N, 3), (N,) or scalar -> output shape (N, 3, 3)
         if isinstance(theta, (int, float)):
             theta = np.full(axis.shape[0], theta)
 
-        num = axis.shape[0]
-        rot = np.zeros((num, 3, 3))
-        small_mask = theta < 1e-6
-        rot[small_mask] = np.eye(3)
+    # Normalize axis using vec_norm
+    normed_axis = vec_norm(axis)
 
-        if np.any(~small_mask):
-            axis_matrix = hat(axis[~small_mask])
-            sin_theta = np.sin(theta[~small_mask])
-            cos_theta = np.cos(theta[~small_mask])
-            # Batch matrix multiplication
-            axis_matrix_sq = axis_matrix @ axis_matrix
-            rot[~small_mask] = (
-                np.eye(3)[np.newaxis, :, :] +
-                sin_theta[:, np.newaxis, np.newaxis] * axis_matrix +
-                (1 - cos_theta)[:, np.newaxis, np.newaxis] * axis_matrix_sq)
-        return rot
+    num = axis.shape[0]
+    rot = np.zeros((num, 3, 3))
+    small_mask = theta < 1e-6
+    rot[small_mask] = np.eye(3)
+
+    if np.any(~small_mask):
+        axis_matrix = hat(normed_axis[~small_mask])
+        sin_theta = np.sin(theta[~small_mask])
+        cos_theta = np.cos(theta[~small_mask])
+        # Batch matrix multiplication
+        axis_matrix_sq = axis_matrix @ axis_matrix
+        rot[~small_mask] = (
+            np.eye(3)[np.newaxis, :, :] +
+            sin_theta[:, np.newaxis, np.newaxis] * axis_matrix +
+            (1 - cos_theta)[:, np.newaxis, np.newaxis] * axis_matrix_sq)
+    
+    return rot[0] if single else rot
 
 
 def axis2quat(axis: np.ndarray, theta) -> np.ndarray:
     assert (axis.ndim == 1 and axis.shape == (3, )) or (
         axis.ndim == 2 and axis.shape[1] == 3), "axis2quat axis shape err"
-    if axis.ndim == 1:
+    
+    single = axis.ndim == 1
+    if single:
         assert isinstance(
             theta, (int, float)), "axis2quat theta must be scalar for 1D axis"
+        axis = axis[np.newaxis, :]
+        theta = np.array([theta])
     else:
         assert (isinstance(theta, np.ndarray) and theta.ndim == 1 and
                 theta.shape[0] == axis.shape[0]) or isinstance(theta, (int, float)), \
             "axis2quat theta shape err"
-
-    if axis.ndim == 1:
-        if theta < 1e-6:
-            return np.array([1.0, 0.0, 0.0, 0.0])
-
-        quat = np.zeros(4)
-        quat[0] = np.cos(theta / 2)
-        quat[1:] = axis * np.sin(theta / 2)
-        return quat
-    else:
-        # Batch processing: input shape (N, 3), (N,) or scalar -> output shape (N, 4)
         if isinstance(theta, (int, float)):
             theta = np.full(axis.shape[0], theta)
 
-        num = axis.shape[0]
-        quat = np.zeros((num, 4))
-        small_mask = theta < 1e-6
-        quat[small_mask] = np.array([1.0, 0.0, 0.0, 0.0])
+    # Normalize axis using vec_norm
+    normed_axis = vec_norm(axis)
 
-        if np.any(~small_mask):
-            half_theta = theta[~small_mask] / 2
-            quat[~small_mask, 0] = np.cos(half_theta)
-            quat[~small_mask,
-                 1:] = axis[~small_mask] * np.sin(half_theta)[:, np.newaxis]
-        return quat
+    num = axis.shape[0]
+    quat = np.zeros((num, 4))
+    small_mask = theta < 1e-6
+    quat[small_mask] = np.array([1.0, 0.0, 0.0, 0.0])
+
+    if np.any(~small_mask):
+        half_theta = theta[~small_mask] / 2
+        quat[~small_mask, 0] = np.cos(half_theta)
+        quat[~small_mask,
+             1:] = normed_axis[~small_mask] * np.sin(half_theta)[:, np.newaxis]
+    
+    return quat[0] if single else quat
 
 
 def axis2so3(axis: np.ndarray, theta) -> np.ndarray:
     assert (axis.ndim == 1 and axis.shape == (3, )) or (
         axis.ndim == 2 and axis.shape[1] == 3), "axis2so3 axis shape err"
-    if axis.ndim == 1:
+
+    single = axis.ndim == 1
+    if single:
         assert isinstance(
             theta, (int, float)), "axis2so3 theta must be scalar for 1D axis"
+        axis = axis[np.newaxis, :]
+        theta = np.array([theta])
     else:
         assert (isinstance(theta, np.ndarray) and theta.ndim == 1 and
                 theta.shape[0] == axis.shape[0]) or isinstance(theta, (int, float)), \
-            "axis2so3 theta shape err"
-
-    if axis.ndim == 1:
-        return theta * axis
-    else:
-        # Batch processing: input shape (N, 3), (N,) or scalar -> output shape (N, 3)
+            "axis2so3 theta shape err"    
         if isinstance(theta, (int, float)):
             theta = np.full(axis.shape[0], theta)
-        return theta[:, np.newaxis] * axis
+
+    normed_axis = vec_norm(axis)
+    so3 = theta[:, np.newaxis] * normed_axis
+    return so3[0] if single else so3
 
 
 def so32rot(so3: np.ndarray) -> np.ndarray:
     assert (so3.ndim == 1 and so3.shape == (3, )) or (
         so3.ndim == 2 and so3.shape[1] == 3), "so32rot so3 shape err"
 
-    if so3.ndim == 1:
-        theta = np.linalg.norm(so3)
-        if theta < 1e-6:
-            return np.eye(3)
-        else:
-            axis = so3 / theta
-            return axis2rot(axis, theta)
-    else:
-        # Batch processing: input shape (N, 3) -> output shape (N, 3, 3)
-        theta = np.linalg.norm(so3, axis=1)
-        axis = so3 / theta[:, np.newaxis]
-        return axis2rot(axis, theta)
+    single = so3.ndim == 1
+    if single:
+        so3 = so3[np.newaxis, :]
+    
+    theta = np.linalg.norm(so3, axis=1)
+    small_mask = theta < 1e-6
+    
+    # Normalize axis using vec_norm
+    axis = np.zeros_like(so3)
+    axis[~small_mask] = vec_norm(so3[~small_mask])
+    axis[small_mask] = np.array([1.0, 0.0, 0.0])
+    
+    return axis2rot(axis, theta)
 
 
 def so32quat(so3: np.ndarray) -> np.ndarray:
@@ -641,21 +513,19 @@ def so32axis(so3: np.ndarray) -> Tuple[np.ndarray, float]:
     assert (so3.ndim == 1 and so3.shape == (3, )) or (
         so3.ndim == 2 and so3.shape[1] == 3), "so32axis so3 shape err"
 
-    if so3.ndim == 1:
-        theta = np.linalg.norm(so3)
-        if theta < 1e-6:
-            return np.array([1.0, 0.0, 0.0]), 0.0
-        else:
-            axis = so3 / theta
-            return axis, theta
-    else:
-        # Batch processing: input shape (N, 3) -> output (N, 3), (N,)
-        theta = np.linalg.norm(so3, axis=1)
-        small_mask = theta < 1e-6
-        axis = np.zeros((so3.shape[0], 3))
-        axis[small_mask] = np.array([1.0, 0.0, 0.0])
-        axis[~small_mask] = so3[~small_mask] / theta[~small_mask, np.newaxis]
-        return axis, theta
+    single = so3.ndim == 1
+    if single:
+        so3 = so3[np.newaxis, :]
+    
+    theta = np.linalg.norm(so3, axis=1)
+    small_mask = theta < 1e-6
+    
+    # Normalize axis using vec_norm
+    axis = np.zeros((so3.shape[0], 3))
+    axis[~small_mask] = vec_norm(so3[~small_mask])
+    axis[small_mask] = np.array([1.0, 0.0, 0.0])
+    
+    return (axis[0], theta[0]) if single else (axis, theta)
 
 
 def trans2part(trans: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -663,15 +533,15 @@ def trans2part(trans: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         trans.ndim == 3
         and trans.shape[1:] == (4, 4)), "trans2part trans shape err"
 
-    if trans.ndim == 2:
-        pos = trans[:3, 3]
-        quat = rot2quat(trans[:3, :3])
-        return pos, quat
-    else:
-        # Batch processing: input shape (N, 4, 4) -> output (N, 3), (N, 4)
-        pos = trans[:, :3, 3]
-        quat = rot2quat(trans[:, :3, :3])
-        return pos, quat
+    single = trans.ndim == 2
+    if single:
+        trans = trans[np.newaxis, ...]
+
+    # Batch processing: input shape (N, 4, 4) -> output (N, 3), (N, 4)
+    pos = trans[:, :3, 3]
+    quat = rot2quat(trans[:, :3, :3])
+
+    return (pos[0], quat[0]) if single else (pos, quat)
 
 
 def trans2se3(trans: np.ndarray) -> np.ndarray:
@@ -679,13 +549,15 @@ def trans2se3(trans: np.ndarray) -> np.ndarray:
         trans.ndim == 3
         and trans.shape[1:] == (4, 4)), "trans2se3 trans shape err"
 
-    if trans.ndim == 2:
-        return np.concatenate((trans[:3, 3], rot2so3(trans[:3, :3])))
-    else:
-        # Batch processing: input shape (N, 4, 4) -> output shape (N, 6)
-        pos = trans[:, :3, 3]
-        so3 = rot2so3(trans[:, :3, :3])
-        return np.concatenate((pos, so3), axis=1)
+    single = trans.ndim == 2
+    if single:
+        trans = trans[np.newaxis, ...]
+
+    # Batch processing: input shape (N, 4, 4) -> output shape (N, 6)
+    pos = trans[:, :3, 3]
+    so3 = rot2so3(trans[:, :3, :3])
+    se3 = np.concatenate((pos, so3), axis=1)
+    return se3[0] if single else se3
 
 
 def part2trans(pos: np.ndarray, quat: np.ndarray) -> np.ndarray:
@@ -697,20 +569,18 @@ def part2trans(pos: np.ndarray, quat: np.ndarray) -> np.ndarray:
     if pos.ndim == 2:
         assert pos.shape[0] == quat.shape[0], "part2trans batch size mismatch"
 
-    if pos.ndim == 1:
-        trans = np.eye(4)
-        trans[:3, 3] = pos
-        trans[:3, :3] = quat2rot(quat)
-        return trans
-    else:
-        # Batch processing: input shape (N, 3), (N, 4) -> output shape (N, 4, 4)
-        num = pos.shape[0]
-        trans = np.zeros((num, 4, 4))
-        trans[:, :3, 3] = pos
-        trans[:, :3, :3] = quat2rot(quat)
-        trans[:, 3, :3] = 0.0
-        trans[:, 3, 3] = 1.0
-        return trans
+    single = pos.ndim == 1
+    if single:
+        pos = pos[np.newaxis, :]
+        quat = quat[np.newaxis, :]
+
+    num = pos.shape[0]
+    trans = np.zeros((num, 4, 4))
+    trans[:, :3, 3] = pos
+    trans[:, :3, :3] = quat2rot(quat)
+    trans[:, 3, :3] = 0.0
+    trans[:, 3, 3] = 1.0
+    return trans[0] if single else trans
 
 
 def part2se3(pos: np.ndarray, quat: np.ndarray) -> np.ndarray:
@@ -722,44 +592,44 @@ def part2se3(pos: np.ndarray, quat: np.ndarray) -> np.ndarray:
     if pos.ndim == 2:
         assert pos.shape[0] == quat.shape[0], "part2se3 batch size mismatch"
 
-    if pos.ndim == 1:
-        se3 = np.concatenate((pos, quat2so3(quat)))
-        return se3
-    else:
-        # Batch processing: input shape (N, 3), (N, 4) -> output shape (N, 6)
-        so3 = quat2so3(quat)
-        return np.concatenate((pos, so3), axis=1)
+    single = pos.ndim == 1
+    if single:
+        pos = pos[np.newaxis, :]
+        quat = quat[np.newaxis, :]
+
+    so3 = quat2so3(quat)
+    se3 = np.concatenate((pos, so3), axis=1)
+    return se3[0] if single else se3
 
 
 def se32trans(se3: np.ndarray) -> np.ndarray:
     assert (se3.ndim == 1 and se3.shape == (6, )) or (
         se3.ndim == 2 and se3.shape[1] == 6), "se32trans se3 shape err"
 
-    if se3.ndim == 1:
-        trans = np.eye(4)
-        trans[:3, 3] = se3[:3]
-        trans[:3, :3] = so32rot(se3[3:])
-        return trans
-    else:
-        # Batch processing: input shape (N, 6) -> output shape (N, 4, 4)
-        num = se3.shape[0]
-        trans = np.zeros((num, 4, 4))
-        trans[:, :3, 3] = se3[:, :3]
-        trans[:, :3, :3] = so32rot(se3[:, 3:])
-        trans[:, 3, :3] = 0.0
-        trans[:, 3, 3] = 1.0
-        return trans
+    single = se3.ndim == 1
+    if single:
+        se3 = se3[np.newaxis, :]
+
+    num = se3.shape[0]
+    trans = np.zeros((num, 4, 4))
+    trans[:, :3, 3] = se3[:, :3]
+    trans[:, :3, :3] = so32rot(se3[:, 3:])
+    trans[:, 3, :3] = 0.0
+    trans[:, 3, 3] = 1.0
+    return trans[0] if single else trans
 
 
 def se32part(se3: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     assert (se3.ndim == 1 and se3.shape == (6, )) or (
         se3.ndim == 2 and se3.shape[1] == 6), "se32part se3 shape err"
 
-    if se3.ndim == 1:
-        return se3[:3], so32quat(se3[3:])
-    else:
-        # Batch processing: input shape (N, 6) -> output (N, 3), (N, 4)
-        return se3[:, :3], so32quat(se3[:, 3:])
+    single = se3.ndim == 1
+    if single:
+        se3 = se3[np.newaxis, :]
+
+    pos = se3[:, :3]
+    quat = so32quat(se3[:, 3:])
+    return (pos[0], quat[0]) if single else (pos, quat)
 
 
 def yaw2quat(yaw) -> np.ndarray:
@@ -780,13 +650,14 @@ def quat2yaw(quat: np.ndarray):
     assert (quat.ndim == 1 and quat.shape == (4, )) or (
         quat.ndim == 2 and quat.shape[1] == 4), "quat2yaw quat shape err"
 
-    if quat.ndim == 1:
-        yaw = 2 * np.arctan2(quat[3], quat[0])
-        return yaw
-    else:
-        # Batch processing: input shape (N, 4) -> output shape (N,)
-        yaw = 2 * np.arctan2(quat[:, 3], quat[:, 0])
-        return yaw
+    single = quat.ndim == 1
+    if single:
+        quat = quat[np.newaxis, :]
+    
+    # Batch processing: input shape (N, 4) -> output shape (N,)
+    yaw = 2 * np.arctan2(quat[:, 3], quat[:, 0])
+    
+    return yaw[0] if single else yaw
 
 
 def single_euler2rot(theta: float | np.ndarray, format: str) -> np.ndarray:
@@ -1077,3 +948,47 @@ def rot2euler(
                 theta[i, 2] = theta13 - theta[i, 0]
 
     return theta[0] if single else theta
+
+
+def twist_swing_decomp(quat: np.ndarray,
+                       axis: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    twist: rotation around the specified axis
+    swing: remaining rotation
+    twist first, swing second
+    """
+    assert (quat.ndim == 1 and quat.shape == (4, )) or (
+        quat.ndim == 2
+        and quat.shape[1] == 4), "twist_swing_decomp quat shape err"
+    assert (axis.ndim == 1 and axis.shape == (3, )) or (
+        axis.ndim == 2
+        and axis.shape[1] == 3), "twist_swing_decomp axis shape err"
+    if quat.ndim == 2 and axis.ndim == 2:
+        assert quat.shape[0] == axis.shape[
+            0], "twist_swing_decomp batch size mismatch"
+
+    single = quat.ndim == 1
+    if single:
+        quat = quat[np.newaxis, :]
+        axis = axis[np.newaxis, :]
+
+    # Normalize quaternion and axis
+    normed_quat = quat_norm(quat)
+    normed_axis = vec_norm(axis)
+
+    # Extract vector part and compute projection onto axis
+    vec = normed_quat[:, 1:]  # shape: (N, 3)
+    proj = np.sum(vec * normed_axis, axis=1,
+                  keepdims=True) * normed_axis  # shape: (N, 3)
+
+    # Construct twist quaternion: [w, proj]
+    q_twist = np.concatenate([normed_quat[:, 0:1], proj],
+                             axis=1)  # shape: (N, 4)
+    q_twist = quat_norm(q_twist)
+
+    # Compute swing: swing = quat * twist_inv
+    q_twist_inv = quat_inv(q_twist)
+    q_swing = quat_mul(normed_quat, q_twist_inv)
+    q_swing = quat_norm(q_swing)
+
+    return (q_twist[0], q_swing[0]) if single else (q_twist, q_swing)
