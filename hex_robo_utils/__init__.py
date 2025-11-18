@@ -56,6 +56,8 @@ from .math_utils import yaw2quat
 from .math_utils import quat2yaw
 from .math_utils import euler2rot
 from .math_utils import rot2euler
+from .math_utils import single_euler2rot
+from .math_utils import single_rot2euler
 from .math_utils import twist_swing_decomp
 
 __all__ = [
@@ -114,6 +116,8 @@ __all__ = [
     'quat2yaw',
     'euler2rot',
     'rot2euler',
+    'single_euler2rot',
+    'single_rot2euler',
     'twist_swing_decomp',
 ]
 

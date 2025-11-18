@@ -53,6 +53,10 @@ class HexDynUtil:
     def get_joint_num(self) -> int:
         return self.__joint_num
 
+    def get_limit(self) -> Tuple[np.ndarray, np.ndarray]:
+        return copy.deepcopy(self.__lower_limit), copy.deepcopy(
+            self.__upper_limit)
+
     def __cal_jac_trans(self, trans_end_in_last: np.ndarray) -> np.ndarray:
         rot = trans_end_in_last[:3, :3]
         pos = trans_end_in_last[:3, 3]
