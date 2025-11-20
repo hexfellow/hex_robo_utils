@@ -58,7 +58,6 @@ from .math_utils import euler2rot
 from .math_utils import rot2euler
 from .math_utils import single_euler2rot
 from .math_utils import single_rot2euler
-from .math_utils import twist_swing_decomp
 
 __all__ = [
     # version
@@ -118,7 +117,6 @@ __all__ = [
     'rot2euler',
     'single_euler2rot',
     'single_rot2euler',
-    'twist_swing_decomp',
 ]
 
 # Check optional dependencies availability
