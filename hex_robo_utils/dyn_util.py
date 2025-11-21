@@ -21,7 +21,7 @@ class HexDynUtil:
     def __init__(
             self,
             model_path: str,
-            last_link: str,
+            last_link: str = "link_6",
             end_pose: np.ndarray = np.array(
                 [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]),
             gravity: np.ndarray = np.array([0, 0, -9.81]),
