@@ -127,9 +127,11 @@ _HAS_H5PY = find_spec("h5py") is not None
 if _HAS_H5PY:
     from .hdf5_reader import HexHdf5Reader
     from .hdf5_writer import HexHdf5Writer
+    from .hdf5_writer import HexHdf5MultiWriter
     __all__.extend([
         'HexHdf5Reader',
         'HexHdf5Writer',
+        'HexHdf5MultiWriter',
     ])
 
 # print("#### Thanks for using HEXFELLOW Utilities :) ####")

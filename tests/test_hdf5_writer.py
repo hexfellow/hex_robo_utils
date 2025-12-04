@@ -12,12 +12,12 @@ import threading
 import numpy as np
 
 try:
-    from hex_robo_utils.hdf5_writer import HexHdf5Writer, HexHdf5MultiWriter
+    from hex_robo_utils.hdf5_writer import HexHdf5MultiWriter
 except ImportError:
     import sys
     sys.path.insert(
         0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from hex_robo_utils.hdf5_writer import HexHdf5Writer
+    from hex_robo_utils.hdf5_writer import HexHdf5MultiWriter
 
 
 class HexRate:
@@ -159,7 +159,6 @@ class MultiArmRGBDRecorder:
     # --------------------- internal helpers --------------------
 
     def _create_datasets(self):
-        max_time_s = self.duration_ns * 1e-9 + 5
         for arm_id in range(self.num_arms):
             group = f"arm_{arm_id}"
             self._writer.create_dataset(
@@ -168,8 +167,7 @@ class MultiArmRGBDRecorder:
                 shape=self.arm_shape,
                 dtype=self.arm_dtype,
                 chunk_num=64,
-                max_num=int(max_time_s * self.arm_hz),
-                # max_num=None,
+                max_num=None,
             )
 
         for cam_id in range(self.num_cams):
@@ -182,8 +180,7 @@ class MultiArmRGBDRecorder:
                 shape=self.rgb_shape,
                 dtype=self.rgb_dtype,
                 chunk_num=1,
-                max_num=int(max_time_s * self.cam_hz),
-                # max_num=None,
+                max_num=None,
             )
             self._writer.create_dataset(
                 "depth",
@@ -191,8 +188,7 @@ class MultiArmRGBDRecorder:
                 shape=self.depth_shape,
                 dtype=self.depth_dtype,
                 chunk_num=1,
-                max_num=int(max_time_s * self.cam_hz),
-                # max_num=None,
+                max_num=None,
             )
 
     def _time_remain(self) -> bool:
@@ -237,7 +233,6 @@ class MultiArmRGBDRecorder:
 
 
 def main():
-    # 默认写到当前目录下的 multi_arm_rgbd.h5
     out_path = os.path.abspath("multi_arm_rgbd")
     print(f"Recording base: {out_path}")
 
@@ -245,8 +240,8 @@ def main():
     recorder = MultiArmRGBDRecorder(
         out_path,
         duration_s=30.0,
-        num_arms=6,
-        num_cams=4,
+        num_arms=5,
+        num_cams=3,
         arm_hz=1000,
         cam_hz=30,
     )

@@ -26,8 +26,9 @@ class HexHdf5Writer:
         self.__hdf5_file = h5py.File(file_path, "w", libver='latest')
         self.__group_dict = {}
         self.__dataset_dict = {}
-        self.__print_interval = print_interval
         self.__batch_size = batch_size
+        self.__print_num = 0
+        self.__print_interval = print_interval
 
         self.__queue = deque()
         self.__stop_event = threading.Event()
@@ -160,12 +161,18 @@ class HexHdf5Writer:
                         batch_items.append(item)
                     empty_count = 0
                 except IndexError:
+                    # Queue is empty, but we may have collected some items
+                    # Write them before continuing
+                    if batch_items:
+                        self.__write_batch(batch_items)
+                        batch_items = []
                     empty_count += 1
                     if empty_count >= max_empty_checks:
                         break
                     time.sleep(1e-5)
                     continue
 
+                # Write batch if we have items
                 if batch_items:
                     self.__write_batch(batch_items)
         except Exception as e:
@@ -234,7 +241,9 @@ class HexHdf5Writer:
         d_sen[n_old:n_new, :] = sts_batch
 
         self.__writer_cnt += batch_size
-        if self.__writer_cnt % self.__print_interval == 0:
+        cur_print_num = self.__writer_cnt // self.__print_interval
+        if cur_print_num > self.__print_num:
+            self.__print_num = cur_print_num
             print("#" * 50)
             for group_name in self.__hdf5_file.keys():
                 print(f"{group_name} len:{self.get_shape(group_name)[0]}")
@@ -354,7 +363,7 @@ class HexHdf5MultiWriter:
         rgb_path = f"{base_dir}/rgb.h5"
         depth_path = f"{base_dir}/depth.h5"
         self.__writers: dict[str, HexHdf5Writer] = {
-            "robot": HexHdf5Writer(arm_path, 10_000, batch_size=128),
+            "robot": HexHdf5Writer(arm_path, 10_000, batch_size=64),
             "rgb": HexHdf5Writer(rgb_path, 300, batch_size=4),
             "depth": HexHdf5Writer(depth_path, 300, batch_size=4),
         }
