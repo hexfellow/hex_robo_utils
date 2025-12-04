@@ -8,23 +8,29 @@
 
 import time
 import threading
-import queue
-import h5py, hdf5plugin
+import os
+import h5py
 import numpy as np
+from collections import deque
 
 
 class HexHdf5Writer:
 
-    def __init__(self, file_path: str):
-        hdf5plugin.register()
+    def __init__(
+        self,
+        file_path: str,
+        print_interval: int = 1_000,
+        batch_size: int = 64,
+    ):
         self.__file_path = file_path
         self.__hdf5_file = h5py.File(file_path, "w", libver='latest')
         self.__group_dict = {}
         self.__dataset_dict = {}
+        self.__print_interval = print_interval
+        self.__batch_size = batch_size
 
-        self.__queue = queue.Queue(maxsize=1024)
+        self.__queue = deque()
         self.__stop_event = threading.Event()
-        self.__batch_size = 32
         self.__writer_cnt = 0
         self.__writer_thread = None
         self.__writer_exc = None
@@ -51,7 +57,9 @@ class HexHdf5Writer:
 
     def stop(self):
         self.__stop_event.set()
-        self.__writer_thread.join()
+        if self.__writer_thread is not None and self.__writer_thread.is_alive(
+        ):
+            self.__writer_thread.join()
         self.summary()
         if self.__hdf5_file is not None:
             try:
@@ -101,91 +109,144 @@ class HexHdf5Writer:
             print("-" * 30)
             print(f"Group: {group_name}")
             print("-" * 30)
-            print(
-                f"get_delta: {(self.__hdf5_file[group_name]['get_ts'][-1] - self.__hdf5_file[group_name]['get_ts'][0]) / 1e9}s"
-            )
-            print(
-                f"sen_delta: {(self.__hdf5_file[group_name]['sen_ts'][-1] - self.__hdf5_file[group_name]['sen_ts'][0]) / 1e9}s"
-            )
+            get_delta_s = ((self.__hdf5_file[group_name]['get_ts'][-1] -
+                            self.__hdf5_file[group_name]['get_ts'][0]) *
+                           1e-9)[0]
+            sen_delta_s = ((self.__hdf5_file[group_name]['sen_ts'][-1] -
+                            self.__hdf5_file[group_name]['sen_ts'][0]) *
+                           1e-9)[0]
+            print(f"get_delta: {get_delta_s}s")
+            print(f"sen_delta: {sen_delta_s}s")
 
             dtype = self.get_dtype(group_name)
             shape = self.get_shape(group_name)
             print(f"  Dataset: {group_name}")
             print(f"    Dtype: {dtype}")
             print(f"    Shape: {shape}")
+            print(f"    GetHz: {shape[0] / get_delta_s}")
+            print(f"    SenHz: {shape[0] / sen_delta_s}")
 
         print("#" * 50)
 
     def __writer_loop(self):
         try:
-            batch = []
-            while not (self.__stop_event.is_set() and self.__queue.empty()):
+            while not self.__stop_event.is_set():
+                # Collect batch of items
+                batch_items = []
                 try:
-                    item = self.__queue.get(timeout=0.1)
-                    batch.append(item)
-                    if len(batch) >= self.__batch_size:
-                        self.__flush_batch(batch)
-                        batch.clear()
+                    # Try to collect up to batch_size items
+                    for _ in range(self.__batch_size):
+                        item = self.__queue.popleft()
+                        batch_items.append(item)
+                except IndexError:
+                    # Queue is empty or not enough items
+                    if len(batch_items) == 0:
+                        time.sleep(1e-5)
+                        continue
+
+                # Write batch if we have items
+                if batch_items:
+                    self.__write_batch(batch_items)
+
+            # Flush remaining items
+            empty_count = 0
+            max_empty_checks = 10
+            while empty_count < max_empty_checks:
+                batch_items = []
+                try:
+                    # Collect remaining items in batches
+                    for _ in range(self.__batch_size):
+                        item = self.__queue.popleft()
+                        batch_items.append(item)
+                    empty_count = 0
+                except IndexError:
+                    empty_count += 1
+                    if empty_count >= max_empty_checks:
+                        break
+                    time.sleep(1e-5)
                     continue
-                except queue.Empty:
-                    if batch:
-                        self.__flush_batch(batch)
-                        batch.clear()
-                    continue
-            if batch:
-                self.__flush_batch(batch)
+
+                if batch_items:
+                    self.__write_batch(batch_items)
         except Exception as e:
             self.__writer_exc = e
             raise
 
-    def __flush_batch(self, batch):
-        buckets = {}
-        for group, data, gts, sts in batch:
-            buckets.setdefault(group, []).append((data, gts, sts))
+    def __write_batch(self, batch_items):
+        """Write a batch of items, grouped by group_name for efficiency."""
+        # Group items by group_name
+        grouped_items = {}
+        for item in batch_items:
+            group = item[0]
+            if group not in grouped_items:
+                grouped_items[group] = []
+            grouped_items[group].append(item)
 
-        for group, items in buckets.items():
-            dataset_key = f"{group}/data"
-            get_ts_key = f"{group}/get_ts"
-            sen_ts_key = f"{group}/sen_ts"
-            ds = self.__dataset_dict[dataset_key]
-            d_get = self.__dataset_dict[get_ts_key]
-            d_sen = self.__dataset_dict[sen_ts_key]
+        # Write each group's batch
+        for group, items in grouped_items.items():
+            self.__write_group_batch(group, items)
 
-            # 将 items 合并成 numpy arrays
-            data_arr = np.stack([it[0] for it in items], axis=0)
-            gts_arr = np.stack([it[1] for it in items], axis=0).reshape(-1, 1)
-            sts_arr = np.stack([it[2] for it in items], axis=0).reshape(-1, 1)
+    def __write_group_batch(self, group_name, items):
+        """Write a batch of items for a specific group."""
+        dataset_key = f"{group_name}/data"
+        get_ts_key = f"{group_name}/get_ts"
+        sen_ts_key = f"{group_name}/sen_ts"
+        ds = self.__dataset_dict[dataset_key]
+        d_get = self.__dataset_dict[get_ts_key]
+        d_sen = self.__dataset_dict[sen_ts_key]
 
-            n_old = ds.shape[0]
-            n_new = n_old + data_arr.shape[0]
-            # 一次 resize（比逐帧 resize 快得多）
-            ds.resize((n_new, *ds.shape[1:]))
-            d_get.resize((n_new, 1))
-            d_sen.resize((n_new, 1))
+        batch_size = len(items)
+        n_old = ds.shape[0]
+        n_new = n_old + batch_size
 
-            ds[n_old:n_new, ...] = data_arr
-            d_get[n_old:n_new, :] = gts_arr
-            d_sen[n_old:n_new, :] = sts_arr
+        # Resize all datasets once
+        ds.resize((n_new, *ds.shape[1:]))
+        d_get.resize((n_new, 1))
+        d_sen.resize((n_new, 1))
 
-        try:
-            self.__hdf5_file.flush()
-        except Exception:
-            pass
+        # Prepare batch arrays
+        data_list = []
+        gts_list = []
+        sts_list = []
 
-        batch_count = sum(len(items) for items in buckets.values())
-        self.__writer_cnt += batch_count
-        if self.__writer_cnt % (self.__batch_size * 32) == 0:
+        for group, data, gts, sts in items:
+            data_list.append(data)
+            # Ensure gts and sts are scalars or 1-element arrays
+            if isinstance(gts, np.ndarray):
+                gts_val = gts.item() if gts.size == 1 else gts[0]
+            else:
+                gts_val = int(gts)
+            if isinstance(sts, np.ndarray):
+                sts_val = sts.item() if sts.size == 1 else sts[0]
+            else:
+                sts_val = int(sts)
+            gts_list.append(gts_val)
+            sts_list.append(sts_val)
+
+        # Stack arrays for batch write
+        data_batch = np.stack(data_list, axis=0)
+        gts_batch = np.array(gts_list, dtype=np.int64).reshape(-1, 1)
+        sts_batch = np.array(sts_list, dtype=np.int64).reshape(-1, 1)
+
+        # Batch write
+        ds[n_old:n_new, ...] = data_batch
+        d_get[n_old:n_new, :] = gts_batch
+        d_sen[n_old:n_new, :] = sts_batch
+
+        self.__writer_cnt += batch_size
+        if self.__writer_cnt % self.__print_interval == 0:
             print("#" * 50)
             for group_name in self.__hdf5_file.keys():
                 print(f"{group_name} len:{self.get_shape(group_name)[0]}")
 
     def create_dataset(
-            self,
-            group_name: str,
-            shape: tuple,
-            dtype: np.dtype,
-            chunk_num: int,
-            compression=hdf5plugin.Bitshuffle(nelems=0, cname='lz4'),
+        self,
+        group_name: str,
+        shape: tuple,
+        dtype: np.dtype,
+        chunk_num: int,
+        max_num: int | None = None,
+        compression=None,
     ):
         if group_name not in self.__group_dict:
             self.__group_dict[group_name] = self.__hdf5_file.create_group(
@@ -194,7 +255,7 @@ class HexHdf5Writer:
         dataset = self.__group_dict[group_name].create_dataset(
             "data",
             shape=(0, *shape),
-            maxshape=(None, *shape),
+            maxshape=(max_num, *shape),
             dtype=dtype,
             chunks=(chunk_num, *shape),
             compression=compression,
@@ -202,14 +263,14 @@ class HexHdf5Writer:
         get_ts_set = self.__group_dict[group_name].create_dataset(
             "get_ts",
             shape=(0, 1),
-            maxshape=(None, 1),
+            maxshape=(max_num, 1),
             dtype=np.int64,
             chunks=(chunk_num, 1),
         )
         sen_ts_set = self.__group_dict[group_name].create_dataset(
             "sen_ts",
             shape=(0, 1),
-            maxshape=(None, 1),
+            maxshape=(max_num, 1),
             dtype=np.int64,
             chunks=(chunk_num, 1),
         )
@@ -223,18 +284,20 @@ class HexHdf5Writer:
         self,
         group_name: str,
         data: np.ndarray,
-        get_ts: np.ndarray,
-        sen_ts: np.ndarray,
-        block: bool = True,
-        timeout: float = None,
+        get_ts: np.ndarray | int,
+        sen_ts: np.ndarray | int,
     ):
+        if isinstance(get_ts, int):
+            get_ts = np.array([get_ts])
+        if isinstance(sen_ts, int):
+            sen_ts = np.array([sen_ts])
         item = (
             group_name,
             data,
             get_ts,
             sen_ts,
         )
-        self.__queue.put(item, block=block, timeout=timeout)
+        self.__queue.append(item)
 
     def append_batch_data(
         self,
@@ -242,18 +305,35 @@ class HexHdf5Writer:
         data: np.ndarray,
         get_ts: np.ndarray,
         sen_ts: np.ndarray,
-        block: bool = True,
-        timeout: float = None,
     ):
-        for i in range(data.shape[0]):
-            self.append_data(
+        """Append batch data more efficiently by adding all items to queue at once."""
+        batch_size = data.shape[0]
+        # Ensure get_ts and sen_ts are properly shaped
+        if get_ts.ndim == 0:
+            get_ts = np.array([get_ts] * batch_size)
+        elif get_ts.shape[0] != batch_size:
+            raise ValueError(
+                f"get_ts shape mismatch: expected {batch_size}, got {get_ts.shape[0]}"
+            )
+
+        if sen_ts.ndim == 0:
+            sen_ts = np.array([sen_ts] * batch_size)
+        elif sen_ts.shape[0] != batch_size:
+            raise ValueError(
+                f"sen_ts shape mismatch: expected {batch_size}, got {sen_ts.shape[0]}"
+            )
+
+        # Add all items to queue efficiently
+        for i in range(batch_size):
+            item = (
                 group_name,
                 data[i],
-                get_ts[i],
-                sen_ts[i],
-                block=block,
-                timeout=timeout,
+                get_ts[i] if isinstance(get_ts[i], np.ndarray) else np.array(
+                    [get_ts[i]]),
+                sen_ts[i] if isinstance(sen_ts[i], np.ndarray) else np.array(
+                    [sen_ts[i]]),
             )
+            self.__queue.append(item)
 
     def now_ns(self):
         return np.array([time.time_ns()])
@@ -264,3 +344,92 @@ class HexHdf5Writer:
         except Exception as e:
             print(f"hex_ts_to_ns failed: {e}")
             return np.array([np.inf])
+
+
+class HexHdf5MultiWriter:
+
+    def __init__(self, base_dir: str):
+        os.makedirs(base_dir, exist_ok=True)
+        arm_path = f"{base_dir}/arms.h5"
+        rgb_path = f"{base_dir}/rgb.h5"
+        depth_path = f"{base_dir}/depth.h5"
+        self.__writers: dict[str, HexHdf5Writer] = {
+            "robot": HexHdf5Writer(arm_path, 10_000, batch_size=128),
+            "rgb": HexHdf5Writer(rgb_path, 300, batch_size=4),
+            "depth": HexHdf5Writer(depth_path, 300, batch_size=4),
+        }
+
+    def start(self):
+        for key, writer in self.__writers.items():
+            print(f"Starting writer for {key}")
+            writer.start()
+
+    def stop(self):
+        for key, writer in self.__writers.items():
+            print(f"Stopping writer for {key}")
+            writer.stop()
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+
+    # --------------- proxies ---------------
+    def get_writer(self, msg_type: str) -> HexHdf5Writer:
+        return self.__writers[msg_type]
+
+    def create_dataset(
+        self,
+        msg_type: str,
+        group_name: str,
+        shape: tuple,
+        dtype: np.dtype,
+        chunk_num: int,
+        max_num: int | None = None,
+    ):
+        self.__writers[msg_type].create_dataset(
+            group_name=group_name,
+            shape=shape,
+            dtype=dtype,
+            chunk_num=chunk_num,
+            max_num=max_num,
+            compression=None,
+        )
+
+    def append_data(
+        self,
+        msg_type: str,
+        group_name: str,
+        data: np.ndarray,
+        get_ts: np.ndarray | int,
+        sen_ts: np.ndarray | int,
+    ):
+        self.__writers[msg_type].append_data(
+            group_name=group_name,
+            data=data,
+            get_ts=get_ts,
+            sen_ts=sen_ts,
+        )
+
+    def append_batch_data(
+        self,
+        msg_type: str,
+        group_name: str,
+        data: np.ndarray,
+        get_ts: np.ndarray,
+        sen_ts: np.ndarray,
+    ):
+        self.__writers[msg_type].append_batch_data(
+            group_name=group_name,
+            data=data,
+            get_ts=get_ts,
+            sen_ts=sen_ts,
+        )
+
+    def now_ns(self):
+        return next(iter(self.__writers.values())).now_ns()
+
+    def hex_ts_to_ns(self, ts: dict):
+        return next(iter(self.__writers.values())).hex_ts_to_ns(ts)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hex_robo_utils"
-version = "0.2.2"
+version = "0.2.3"
 description = "HEXFELLOW Robotics Utilities"
 readme = "README.md"
 license = "Apache-2.0"
@@ -29,8 +29,8 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-hdf5 = ["h5py>=3.14.0", "hdf5plugin>=5.1.0"]
-all = ["h5py>=3.14.0", "hdf5plugin>=5.1.0"]
+hdf5 = ["h5py>=3.14.0"]
+all = ["h5py>=3.14.0"]
 
 [tool.pytest.ini_options]
 filterwarnings = [
