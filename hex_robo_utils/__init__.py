@@ -122,16 +122,16 @@ __all__ = [
 # Check optional dependencies availability
 from importlib.util import find_spec
 
-_HAS_H5PY = find_spec("h5py") is not None
-_HAS_HDF5PLUGIN = find_spec("hdf5plugin") is not None
-
 # Optional: hdf5
-if _HAS_H5PY and _HAS_HDF5PLUGIN:
+_HAS_H5PY = find_spec("h5py") is not None
+if _HAS_H5PY:
     from .hdf5_reader import HexHdf5Reader
     from .hdf5_writer import HexHdf5Writer
+    from .hdf5_writer import HexHdf5MultiWriter
     __all__.extend([
         'HexHdf5Reader',
         'HexHdf5Writer',
+        'HexHdf5MultiWriter',
     ])
 
 # print("#### Thanks for using HEXFELLOW Utilities :) ####")

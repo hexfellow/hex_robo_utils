@@ -41,7 +41,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 if [ ! -d .venv ]; then
-  uv venv --python 3.11
+  uv venv --python 3.10
 fi
 source .venv/bin/activate
 
