@@ -8,6 +8,7 @@
 
 import os
 import time
+import multiprocessing
 import threading
 import numpy as np
 
@@ -22,7 +23,7 @@ except ImportError:
 
 class HexRate:
 
-    def __init__(self, hz: float, spin_threshold_ns: int = 1_000_000):
+    def __init__(self, hz: float, spin_threshold_ns: int = 10_000):
         if hz <= 0:
             raise ValueError("hz must be greater than 0")
         if spin_threshold_ns < 0:
@@ -90,9 +91,12 @@ class MultiArmRGBDRecorder:
         self.depth_shape = (480, 640)
         self.depth_dtype = np.uint16
 
-        self._threads: list[threading.Thread] = []
-        self._stop_event = threading.Event()
+        self._processes: list[multiprocessing.Process] = []
+        self._stop_event = multiprocessing.Event()
         self._start_time_ns: int | None = None
+        self._manager = None
+        self._data_queue = None
+        self._queue_thread = None
 
         self._create_datasets()
 
@@ -106,19 +110,34 @@ class MultiArmRGBDRecorder:
         # 统一使用 perf_counter_ns 作为时间基准
         self._start_time_ns = time.perf_counter_ns()
 
+        # 创建 Manager 用于进程间共享
+        self._manager = multiprocessing.Manager()
+        shared_start_time = self._manager.Value('i', self._start_time_ns)
+        self._data_queue = self._manager.Queue()
+
+        # 启动队列处理线程
+        self._queue_thread = threading.Thread(target=self._queue_worker,
+                                              daemon=True)
+        self._queue_thread.start()
+
         for arm_id in range(self.num_arms):
-            t = threading.Thread(target=self._arm_thread,
-                                 args=(arm_id, ),
-                                 daemon=True)
-            self._threads.append(t)
-            t.start()
+            p = multiprocessing.Process(
+                target=self._arm_process,
+                args=(arm_id, self._stop_event, shared_start_time,
+                      self.duration_ns, self.arm_hz, self.arm_shape,
+                      self.arm_dtype, self._data_queue))
+            self._processes.append(p)
+            p.start()
 
         for cam_id in range(self.num_cams):
-            t = threading.Thread(target=self._rgbd_thread,
-                                 args=(cam_id, ),
-                                 daemon=True)
-            self._threads.append(t)
-            t.start()
+            p = multiprocessing.Process(
+                target=self._rgbd_process,
+                args=(cam_id, self._stop_event, shared_start_time,
+                      self.duration_ns, self.cam_hz, self.rgb_shape,
+                      self.rgb_dtype, self.depth_shape, self.depth_dtype,
+                      self._data_queue))
+            self._processes.append(p)
+            p.start()
 
     def wait(self):
         if self._start_time_ns is None:
@@ -132,18 +151,31 @@ class MultiArmRGBDRecorder:
         self.stop()
 
     def stop(self):
-        """停止所有线程并关闭 writer。"""
+        """停止所有进程并关闭 writer。"""
         if self._start_time_ns is None:
             return
 
         self._stop_event.set()
-        for t in self._threads:
-            if t.is_alive():
-                t.join()
-        self._threads.clear()
+        for p in self._processes:
+            if p.is_alive():
+                p.join()
+        self._processes.clear()
+
+        # 等待队列处理完成
+        if self._data_queue is not None:
+            # 发送结束标记
+            for _ in range(self.num_arms + self.num_cams):
+                self._data_queue.put(None)
+            if self._queue_thread is not None and self._queue_thread.is_alive(
+            ):
+                self._queue_thread.join(timeout=5.0)
 
         self._writer.stop()
         self._start_time_ns = None
+        if self._manager is not None:
+            self._manager.shutdown()
+            self._manager = None
+        self._data_queue = None
 
     def run(self):
         self.start()
@@ -191,44 +223,100 @@ class MultiArmRGBDRecorder:
                 max_num=None,
             )
 
-    def _time_remain(self) -> bool:
-        if self._start_time_ns is None:
-            return False
-        return (time.perf_counter_ns() -
-                self._start_time_ns) < self.duration_ns
+    def _queue_worker(self):
+        """从队列中读取数据并写入 HDF5"""
+        import queue
+        while True:
+            try:
+                item = self._data_queue.get(timeout=1.0)
+                if item is None:  # 结束标记
+                    continue
+                msg_type, group, data, get_ts, sen_ts = item
+                self._writer.append_data(msg_type, group, data, get_ts, sen_ts)
+            except queue.Empty:
+                # 超时，检查是否应该退出
+                if self._stop_event.is_set():
+                    # 处理剩余数据
+                    while True:
+                        try:
+                            item = self._data_queue.get_nowait()
+                            if item is None:
+                                continue
+                            msg_type, group, data, get_ts, sen_ts = item
+                            self._writer.append_data(msg_type, group, data,
+                                                     get_ts, sen_ts)
+                        except queue.Empty:
+                            break
+                    break
+            except Exception as e:
+                print(f"Queue worker error: {e}")
+                if self._stop_event.is_set():
+                    break
 
-    def _arm_thread(self, arm_id: int):
+    @staticmethod
+    def _time_remain(shared_start_time, duration_ns) -> bool:
+        if shared_start_time.value == 0:
+            return False
+        return (time.perf_counter_ns() - shared_start_time.value) < duration_ns
+
+    @staticmethod
+    def _arm_process(arm_id: int, stop_event: multiprocessing.Event,
+                     shared_start_time, duration_ns: int, arm_hz: int,
+                     arm_shape: tuple, arm_dtype: np.dtype, data_queue):
         group = f"arm_{arm_id}"
-        hex_rate = HexRate(self.arm_hz)
-        while (not self._stop_event.is_set()) and self._time_remain():
-            data = np.random.randn(*self.arm_shape).astype(self.arm_dtype)
-            get_ts = self._writer.now_ns()
-            sen_ts = self._writer.now_ns()
-            self._writer.append_data("robot", group, data, get_ts, sen_ts)
+        hex_rate = HexRate(arm_hz)
+        fps_cnt = 0
+        start_time_ns = time.perf_counter_ns()
+        while (not stop_event.is_set()) and MultiArmRGBDRecorder._time_remain(
+                shared_start_time, duration_ns):
+            data = np.random.randn(*arm_shape).astype(arm_dtype)
+            get_ts = time.time_ns()
+            sen_ts = time.time_ns()
+            # 将数据放入队列
+            data_queue.put(("robot", group, data, get_ts, sen_ts))
+            fps_cnt += 1
+            if fps_cnt >= 3_000:
+                delta_s = (time.perf_counter_ns() - start_time_ns) * 1e-9
+                print(f"Arm {arm_id} FPS: {fps_cnt / delta_s}Hz")
+                fps_cnt = 0
+                start_time_ns = time.perf_counter_ns()
             hex_rate.sleep()
 
-    def _rgbd_thread(self, cam_id: int):
+    @staticmethod
+    def _rgbd_process(cam_id: int, stop_event: multiprocessing.Event,
+                      shared_start_time, duration_ns: int, cam_hz: int,
+                      rgb_shape: tuple, rgb_dtype: np.dtype,
+                      depth_shape: tuple, depth_dtype: np.dtype, data_queue):
         rgb_group = f"cam_{cam_id}_rgb"
         depth_group = f"cam_{cam_id}_depth"
-        hex_rate = HexRate(self.cam_hz)
-        while (not self._stop_event.is_set()) and self._time_remain():
+        hex_rate = HexRate(cam_hz)
+        fps_cnt = 0
+        start_time_ns = time.perf_counter_ns()
+        while (not stop_event.is_set()) and MultiArmRGBDRecorder._time_remain(
+                shared_start_time, duration_ns):
             rgb = np.random.randint(
                 0,
                 256,
-                size=self.rgb_shape,
-                dtype=self.rgb_dtype,
+                size=rgb_shape,
+                dtype=rgb_dtype,
             )
             depth = np.random.randint(
                 0,
                 65536,
-                size=self.depth_shape,
-                dtype=self.depth_dtype,
+                size=depth_shape,
+                dtype=depth_dtype,
             )
-            get_ts = self._writer.now_ns()
-            sen_ts = self._writer.now_ns()
-            self._writer.append_data("rgb", rgb_group, rgb, get_ts, sen_ts)
-            self._writer.append_data("depth", depth_group, depth, get_ts,
-                                     sen_ts)
+            get_ts = time.time_ns()
+            sen_ts = time.time_ns()
+            # 将数据放入队列
+            data_queue.put(("rgb", rgb_group, rgb, get_ts, sen_ts))
+            data_queue.put(("depth", depth_group, depth, get_ts, sen_ts))
+            fps_cnt += 1
+            if fps_cnt >= 100:
+                delta_s = (time.perf_counter_ns() - start_time_ns) * 1e-9
+                print(f"RGBD {cam_id} FPS: {fps_cnt / delta_s}Hz")
+                fps_cnt = 0
+                start_time_ns = time.perf_counter_ns()
             hex_rate.sleep()
 
 
@@ -240,7 +328,7 @@ def main():
     recorder = MultiArmRGBDRecorder(
         out_path,
         duration_s=30.0,
-        num_arms=5,
+        num_arms=6,
         num_cams=4,
         arm_hz=1000,
         cam_hz=30,
