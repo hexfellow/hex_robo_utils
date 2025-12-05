@@ -363,7 +363,7 @@ class HexHdf5MultiWriter:
         rgb_path = f"{base_dir}/rgb.h5"
         depth_path = f"{base_dir}/depth.h5"
         self.__writers: dict[str, HexHdf5Writer] = {
-            "robot": HexHdf5Writer(arm_path, 10_000, batch_size=64),
+            "robot": HexHdf5Writer(arm_path, 10_000, batch_size=1024),
             "rgb": HexHdf5Writer(rgb_path, 300, batch_size=4),
             "depth": HexHdf5Writer(depth_path, 300, batch_size=4),
         }

@@ -166,7 +166,7 @@ class MultiArmRGBDRecorder:
                 group,
                 shape=self.arm_shape,
                 dtype=self.arm_dtype,
-                chunk_num=64,
+                chunk_num=1024,
                 max_num=None,
             )
 
@@ -241,7 +241,7 @@ def main():
         out_path,
         duration_s=30.0,
         num_arms=5,
-        num_cams=3,
+        num_cams=4,
         arm_hz=1000,
         cam_hz=30,
     )
