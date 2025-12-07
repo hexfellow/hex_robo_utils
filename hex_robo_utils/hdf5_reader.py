@@ -13,9 +13,9 @@ import numpy as np
 
 class HexHdf5Reader:
 
-    def __init__(self, file_path: str):
-        self.__file_path = file_path
-        self.__hdf5_file = h5py.File(file_path, "r")
+    def __init__(self, file_dir: str, file_idx: int, msg_type: str):
+        self.__file_path = f"{file_dir}/{file_idx:04d}/{msg_type}.h5"
+        self.__hdf5_file = h5py.File(self.__file_path, "r")
         self.__dataset_dict = {}
 
     def __del__(self):

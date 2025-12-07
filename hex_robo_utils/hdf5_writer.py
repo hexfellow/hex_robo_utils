@@ -344,26 +344,16 @@ class HexHdf5Writer:
             )
             self.__queue.append(item)
 
-    def now_ns(self):
-        return np.array([time.time_ns()])
-
-    def hex_ts_to_ns(self, ts: dict):
-        try:
-            return np.array([ts["s"] * 1e9 + ts["ns"]])
-        except Exception as e:
-            print(f"hex_ts_to_ns failed: {e}")
-            return np.array([np.inf])
-
 
 class HexHdf5MultiWriter:
 
     def __init__(self, base_dir: str):
         os.makedirs(base_dir, exist_ok=True)
-        arm_path = f"{base_dir}/arms.h5"
+        arm_path = f"{base_dir}/arm.h5"
         rgb_path = f"{base_dir}/rgb.h5"
         depth_path = f"{base_dir}/depth.h5"
         self.__writers: dict[str, HexHdf5Writer] = {
-            "robot": HexHdf5Writer(arm_path, 10_000, batch_size=1024),
+            "arm": HexHdf5Writer(arm_path, 10_000, batch_size=1024),
             "rgb": HexHdf5Writer(rgb_path, 300, batch_size=4),
             "depth": HexHdf5Writer(depth_path, 300, batch_size=4),
         }
@@ -438,7 +428,11 @@ class HexHdf5MultiWriter:
         )
 
     def now_ns(self):
-        return next(iter(self.__writers.values())).now_ns()
+        return np.array([time.time_ns()])
 
     def hex_ts_to_ns(self, ts: dict):
-        return next(iter(self.__writers.values())).hex_ts_to_ns(ts)
+        try:
+            return np.array([ts["s"] * 1e9 + ts["ns"]])
+        except Exception as e:
+            print(f"hex_ts_to_ns failed: {e}")
+            return np.array([np.inf])

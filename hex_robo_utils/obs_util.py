@@ -205,3 +205,24 @@ class HexObsUtilDisturbance:
                                  self.__dis_upper)
 
         return self.__dis_hat
+
+
+class HexObsUtilLowpassFilter:
+
+    def __init__(self, lowpass_num: int, init_value: np.ndarray):
+        self.__lowpass_num = lowpass_num
+        wt_range = np.arange(1, lowpass_num + 1)
+        wt_range_rev = wt_range[::-1]
+        wt = np.min(np.stack((wt_range, wt_range_rev)), axis=0)
+        self.__wt = (wt / np.sum(wt)).reshape(-1, 1, 1)
+        self.__arr = np.array([init_value] * self.__lowpass_num)
+
+    def reset(self, init_value: np.ndarray):
+        self.__arr = np.array([init_value] * self.__lowpass_num)
+
+    def append(self, value: np.ndarray):
+        self.__arr[:-1, :] = self.__arr[1:, :]
+        self.__arr[-1, :] = value
+
+    def get_value(self) -> np.ndarray:
+        return (self.__arr * self.__wt).sum(axis=0)

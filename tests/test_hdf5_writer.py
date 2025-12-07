@@ -194,7 +194,7 @@ class MultiArmRGBDRecorder:
         for arm_id in range(self.num_arms):
             group = f"arm_{arm_id}"
             self._writer.create_dataset(
-                "robot",
+                "arm",
                 group,
                 shape=self.arm_shape,
                 dtype=self.arm_dtype,
@@ -273,7 +273,7 @@ class MultiArmRGBDRecorder:
             get_ts = time.time_ns()
             sen_ts = time.time_ns()
             # 将数据放入队列
-            data_queue.put(("robot", group, data, get_ts, sen_ts))
+            data_queue.put(("arm", group, data, get_ts, sen_ts))
             fps_cnt += 1
             if fps_cnt >= 3_000:
                 delta_s = (time.perf_counter_ns() - start_time_ns) * 1e-9

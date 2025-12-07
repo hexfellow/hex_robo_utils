@@ -11,6 +11,7 @@ from .dyn_util import HexDynUtil
 from .dyn_util import HexFricUtil
 from .obs_util import HexObsUtilJoint
 from .obs_util import HexObsUtilDisturbance
+from .obs_util import HexObsUtilLowpassFilter
 from .plan_util import HexPlanUtilBvp
 from .ctrl_util import HexCtrlUtilMitJoint
 from .ctrl_util import HexCtrlUtilPidJoint
@@ -68,6 +69,7 @@ __all__ = [
     'HexFricUtil',
     'HexObsUtilJoint',
     'HexObsUtilDisturbance',
+    'HexObsUtilLowpassFilter',
     'HexPlanUtilBvp',
     'HexCtrlUtilMitJoint',
     'HexCtrlUtilPidJoint',
