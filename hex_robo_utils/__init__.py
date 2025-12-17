@@ -8,7 +8,9 @@
 
 # utils
 from .dyn_util import HexDynUtil
+from .dyn_util import HexMirrorUtil
 from .dyn_util import HexFricUtil
+from .dyn_util import HexFeedbackUtil
 from .obs_util import HexObsUtilJoint
 from .obs_util import HexObsUtilDisturbance
 from .obs_util import HexObsUtilLowpassFilter
@@ -66,7 +68,9 @@ __all__ = [
 
     # utils
     'HexDynUtil',
+    'HexMirrorUtil',
     'HexFricUtil',
+    'HexFeedbackUtil',
     'HexObsUtilJoint',
     'HexObsUtilDisturbance',
     'HexObsUtilLowpassFilter',

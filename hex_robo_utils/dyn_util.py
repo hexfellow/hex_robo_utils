@@ -183,21 +183,34 @@ class HexDynUtil:
         return result_flag, result_q, err_norm
 
 
+class HexMirrorUtil:
+
+    def __init__(self, inv: np.ndarray):
+        self.__inv = inv.copy()
+        self.__inv_extended = self.__inv[:, np.newaxis]
+
+    def __call__(self, state: np.ndarray) -> np.ndarray:
+        if len(state.shape) == 1:
+            return self.__inv * state
+        else:
+            return self.__inv_extended * state
+
+
 class HexFricUtil:
     # tanh-based friction model
     # tau_f = fc * tanh(k * dq) + fv * dq + fo
     def __init__(
             self,
             fc: np.ndarray = np.array([1.0] * 6),
-            k: np.ndarray = np.array([100.0] * 6),
             fv: np.ndarray = np.array([1.0] * 6),
             fo: np.ndarray = np.array([0.0] * 6),
+            k: np.ndarray = np.array([100.0] * 6),
     ):
         # constants
         self.__fc = fc.copy()
-        self.__k = k.copy()
         self.__fv = fv.copy()
         self.__fo = fo.copy()
+        self.__k = k.copy()
 
     def __call__(self, dq: np.ndarray):
         tau_c = self.__fc * np.tanh(self.__k * dq)
@@ -205,3 +218,35 @@ class HexFricUtil:
         tau_o = self.__fo
         tau_f = tau_c + tau_v + tau_o
         return tau_f
+
+
+class HexFeedbackUtil:
+
+    def __init__(
+            self,
+            kp: np.ndarray = np.array([0.0] * 6),
+            kd: np.ndarray = np.array([0.0] * 6),
+            deadzone: np.ndarray = np.array([0.0] * 6),
+    ):
+        self.__kp = kp.copy()
+        self.__kd = kd.copy()
+        self.__deadzone = deadzone.copy()
+
+    def __deadzone_process(self, var: np.ndarray) -> np.ndarray:
+        res = var.copy()
+        zero_mask = np.fabs(res) < self.__deadzone
+        res[zero_mask] = 0.0
+        res[~zero_mask] -= np.sign(
+            res[~zero_mask]) * self.__deadzone[~zero_mask]
+        return res
+
+    def __call__(
+        self,
+        leader_state: np.ndarray,
+        follower_q: np.ndarray,
+        tar_dq: np.ndarray,
+    ) -> np.ndarray:
+        q_err = follower_q - leader_state[:, 0]
+        dq_err = tar_dq - leader_state[:, 1]
+        tau_fb = self.__kp * q_err + self.__kd * dq_err
+        return self.__deadzone_process(tau_fb)
