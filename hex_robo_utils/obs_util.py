@@ -148,65 +148,6 @@ class HexObsUtilJoint:
         self.__obs_dq = self.__obs_dq * weight_intgr + dq_sensor * weight_sensor
 
 
-class HexObsUtilDisturbance:
-
-    def __init__(
-            self,
-            dt: float = 4e-3,
-            fc: np.ndarray = np.array([10.0] * 6),
-            fa: np.ndarray = np.array([25.0] * 6),
-            dis_limit: np.ndarray = np.array([3.0] * 6),
-    ):
-        ### limits
-        self.__dis_upper = dis_limit.copy()
-        self.__dis_lower = -dis_limit.copy()
-
-        ### constants
-        self.__dt = dt
-        self.__alpha_q = np.exp(-2.0 * np.pi * fc * dt)
-        self.__alpha_a = np.exp(-2.0 * np.pi * fa * dt)
-
-        ### variables
-        self.__ready = False
-        self.__dof = dis_limit.shape[0]
-        self.__ddq_hat = np.zeros(self.__dof)
-        self.__dis_hat = np.zeros(self.__dof)
-        self.__last_cmd = np.zeros(self.__dof)
-        self.__last_fric = np.zeros(self.__dof)
-
-    def ready(self):
-        return self.__ready
-
-    def set_last(self, cmd: np.ndarray, fric: np.ndarray):
-        self.__last_cmd = cmd.copy()
-        self.__last_fric = fric.copy()
-        self.__ready = True
-
-    def __call__(
-        self,
-        dq: np.ndarray,
-        ddq_raw: np.ndarray,
-        m_mat: np.ndarray,
-        c_mat: np.ndarray,
-        g_vec: np.ndarray,
-    ):
-        # acc estimate
-        self.__ddq_hat = self.__alpha_a * self.__ddq_hat + (
-            1 - self.__alpha_a) * ddq_raw
-
-        # nominal dynamics
-        tau_model = m_mat @ self.__ddq_hat + c_mat @ dq + g_vec
-
-        # raw disturbance calculation
-        dis_raw = self.__last_cmd - tau_model - self.__last_fric
-        self.__dis_hat = self.__alpha_q * self.__dis_hat + (
-            1 - self.__alpha_q) * dis_raw
-        self.__dis_hat = np.clip(self.__dis_hat, self.__dis_lower,
-                                 self.__dis_upper)
-
-        return self.__dis_hat
-
-
 class HexObsUtilLowpassFilter:
 
     def __init__(self, lowpass_num: int, init_value: np.ndarray):
