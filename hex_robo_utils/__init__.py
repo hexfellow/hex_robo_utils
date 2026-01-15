@@ -19,6 +19,7 @@ from .ctrl_util import HexCtrlUtilPidJoint
 from .ctrl_util import HexCtrlUtilIntJoint
 from .ctrl_util import HexCtrlUtilMitWork
 from .ctrl_util import HexCtrlUtilIntWork
+from .plot_util import HexPlotUtilPlotJuggler
 
 # basic
 from .math_utils import hat
@@ -80,6 +81,7 @@ __all__ = [
     'HexCtrlUtilIntWork',
     'HexCtrlUtilPid',
     'HexCtrlUtilInt',
+    'HexPlotUtilPlotJuggler',
 
     # math basic
     'hat',
