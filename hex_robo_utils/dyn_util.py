@@ -8,7 +8,7 @@
 
 import copy
 import numpy as np
-import pinocchio as pin
+import hex_dynamic as dyn
 from typing import Tuple, List
 
 from hex_robo_utils.math_utils import trans2part, part2trans
@@ -26,8 +26,8 @@ class HexDynUtil:
                 [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]),
             gravity: np.ndarray = np.array([0, 0, -9.81]),
     ):
-        ### pinocchio init
-        self.__model = pin.buildModelFromUrdf(model_path)
+        ### dyn init
+        self.__model = dyn.parse_urdf_file(model_path)
         self.__data = self.__model.createData()
         self.__joint_num = self.__model.njoints - 1
         self.__end_link_id = self.__model.getFrameId(last_link)
@@ -39,16 +39,19 @@ class HexDynUtil:
         self.__jac_trans = self.__cal_jac_trans(self.__trans_end_in_last)
 
         ### gravity vector
-        self.__model.gravity.linear = gravity
+        if isinstance(gravity, np.ndarray):
+            gravity = np.ascontiguousarray(gravity)
+            self.__model.set_gravity(gravity)
 
     def get_gravity(self) -> np.ndarray:
-        return copy.deepcopy(self.__model.gravity.linear)
+        return self.__model.gravity
 
     def set_gravity(
             self,
             gravity: np.ndarray = np.array([0, 0, -9.81]),
     ):
-        self.__model.gravity.linear = copy.deepcopy(gravity)
+        gravity = np.ascontiguousarray(gravity)
+        self.__model.set_gravity(gravity)
 
     def get_joint_num(self) -> int:
         return self.__joint_num
@@ -74,22 +77,25 @@ class HexDynUtil:
         q: np.ndarray,
         dq: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        q = np.ascontiguousarray(q)
+        dq = np.ascontiguousarray(dq)
+
         # Compute all dynamic parameters
-        pin.computeAllTerms(self.__model, self.__data, q, dq)
+        dyn.computeAllTerms(self.__model, self.__data, q, dq)
         m_mat = self.__data.M
-        c_mat = pin.computeCoriolisMatrix(self.__model, self.__data, q, dq)
+        c_mat = self.__data.C
         g_vec = self.__data.g
-        jac = pin.computeJointJacobian(
+        jac = dyn.getFrameJacobian(
             self.__model,
             self.__data,
-            q,
-            self.__end_joint_id,
+            self.__end_link_id,
+            dyn.ReferenceFrame.LOCAL,
         )
-        jac_dot = pin.computeJointJacobiansTimeVariation(
+        jac_dot = dyn.getFrameJacobianTimeVariation(
             self.__model,
             self.__data,
-            q,
-            dq,
+            self.__end_link_id,
+            dyn.ReferenceFrame.LOCAL,
         )
 
         jac = self.__jac_trans @ jac
@@ -101,9 +107,10 @@ class HexDynUtil:
         self,
         q: np.ndarray,
     ) -> List[Tuple[np.ndarray, np.ndarray]]:
+        q = np.ascontiguousarray(q)
 
         # Compute forward kinematics to update joint placements
-        pin.forwardKinematics(self.__model, self.__data, q)
+        dyn.forwardKinematics(self.__model, self.__data, q)
 
         # Collect the poses of all joints
         poses = []
@@ -127,7 +134,7 @@ class HexDynUtil:
         damp: float = 1e-12,
         max_iter: int = 300,
     ) -> Tuple[bool, np.ndarray, float]:
-        result_q = copy.deepcopy(start_q)
+        result_q = np.ascontiguousarray(start_q)
         trans_end_tar_in_base = copy.deepcopy(
             part2trans(
                 tar_pose[0],
@@ -139,7 +146,11 @@ class HexDynUtil:
         # inverse kinematics
         result_flag = False
         for _ in range(max_iter):
-            pin.forwardKinematics(self.__model, self.__data, result_q)
+            dyn.computeJointJacobians(
+                self.__model,
+                self.__data,
+                result_q,
+            )
             trans_end_in_base = self.__data.oMi[
                 self.__end_joint_id].homogeneous
             trans_tar_in_end = trans_inv(trans_end_in_base) @ trans_tar_in_base
@@ -150,18 +161,20 @@ class HexDynUtil:
                 result_flag = True
                 break
 
-            # jac in joint frame
-            jac = pin.computeJointJacobian(
+            # jac in end link
+            jac = dyn.getFrameJacobian(
                 self.__model,
                 self.__data,
-                result_q,
-                self.__end_joint_id,
+                self.__end_link_id,
+                dyn.ReferenceFrame.LOCAL,
             )
             dq = np.linalg.pinv(jac, rcond=damp) @ err
-            result_q = pin.integrate(
-                self.__model,
-                result_q,
-                dq * dt,
+
+            result_q += dq * dt
+            result_q = np.clip(
+                angle_norm(result_q),
+                self.__lower_limit,
+                self.__upper_limit,
             )
 
         # post process
@@ -172,7 +185,7 @@ class HexDynUtil:
         )
 
         # check feasible
-        pin.forwardKinematics(self.__model, self.__data, result_q)
+        dyn.forwardKinematics(self.__model, self.__data, result_q)
         trans_end_in_base = self.__data.oMi[self.__end_joint_id].homogeneous
         trans_tar_in_end = trans_base_in_tar @ trans_end_in_base
         err = trans2se3(trans_tar_in_end)
