@@ -82,6 +82,7 @@ class HexDynUtil:
 
         # Compute all dynamic parameters
         dyn.computeAllTerms(self.__model, self.__data, q, dq)
+        dyn.computeCoriolisMatrix(self.__model, self.__data, q, dq)
         m_mat = self.__data.M
         c_mat = self.__data.C
         g_vec = self.__data.g
