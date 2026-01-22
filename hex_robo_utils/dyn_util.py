@@ -77,8 +77,8 @@ class HexDynUtil:
         q: np.ndarray,
         dq: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        q = np.ascontiguousarray(q)
-        dq = np.ascontiguousarray(dq)
+        q = np.ascontiguousarray(q.copy())
+        dq = np.ascontiguousarray(dq.copy())
 
         # Compute all dynamic parameters
         dyn.computeAllTerms(self.__model, self.__data, q, dq)
@@ -108,7 +108,7 @@ class HexDynUtil:
         self,
         q: np.ndarray,
     ) -> List[Tuple[np.ndarray, np.ndarray]]:
-        q = np.ascontiguousarray(q)
+        q = np.ascontiguousarray(q.copy())
 
         # Compute forward kinematics to update joint placements
         dyn.forwardKinematics(self.__model, self.__data, q)
@@ -135,7 +135,7 @@ class HexDynUtil:
         damp: float = 1e-12,
         max_iter: int = 300,
     ) -> Tuple[bool, np.ndarray, float]:
-        result_q = np.ascontiguousarray(start_q)
+        result_q = np.ascontiguousarray(start_q.copy())
         trans_end_tar_in_base = copy.deepcopy(
             part2trans(
                 tar_pose[0],

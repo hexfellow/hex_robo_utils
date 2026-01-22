@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hex_robo_utils"
-version = "0.2.10"
+version = "0.2.11"
 description = "HEXFELLOW Robotics Utilities"
 readme = "README.md"
 license = "Apache-2.0"
@@ -15,7 +15,7 @@ maintainers = [
 ]
 keywords = ["hex_robo_utils"]
 requires-python = ">=3.8"
-dependencies = ["numpy>=2.2.6", "hex_dynamic>=0.1.2"]
+dependencies = ["numpy>=2.2.6", "hex_dynamic>=0.1.3"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
