@@ -76,6 +76,7 @@ class HexDynUtil:
         self,
         q: np.ndarray,
         dq: np.ndarray,
+        base_frame: bool = True,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         q = np.ascontiguousarray(q.copy())
         dq = np.ascontiguousarray(dq.copy())
@@ -101,6 +102,17 @@ class HexDynUtil:
 
         jac = self.__jac_trans @ jac
         jac_dot = self.__jac_trans @ jac_dot
+        if base_frame:
+            trans_last_in_base = self.__data.oMi[self.__joint_num].homogeneous
+            trans_end_in_base = trans_last_in_base @ self.__trans_end_in_last
+            rot_end_in_base = trans_end_in_base[:3, :3]
+
+            jac_trans = np.eye(6)
+            jac_trans[:3, :3] = rot_end_in_base
+            jac_trans[3:, 3:] = rot_end_in_base
+            jac = jac_trans @ jac
+            jac_dot = jac_trans @ jac_dot
+
         return m_mat, c_mat, g_vec, jac, jac_dot
 
     # get [pose_1, pose_2, ..., pose_n]
