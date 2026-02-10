@@ -76,7 +76,7 @@ class HexDynUtil:
         self,
         q: np.ndarray,
         dq: np.ndarray,
-        base_frame: bool = True,
+        base_frame: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         q = np.ascontiguousarray(q.copy())
         dq = np.ascontiguousarray(dq.copy())
