@@ -21,6 +21,14 @@ from .ctrl_util import HexCtrlUtilMitWork
 from .ctrl_util import HexCtrlUtilIntWork
 from .plot_util import HexPlotUtilPlotJuggler
 
+# time
+from .time_utils import HexRate
+from .time_utils import hex_zmq_ts_to_ns
+from .time_utils import ns_to_hex_zmq_ts
+from .time_utils import hex_ns_now
+from .time_utils import hex_zmq_ts_now
+from .time_utils import hex_zmq_ts_delta_ms
+
 # basic
 from .math_utils import hat
 from .math_utils import vee
@@ -82,6 +90,14 @@ __all__ = [
     'HexCtrlUtilPid',
     'HexCtrlUtilInt',
     'HexPlotUtilPlotJuggler',
+
+    # time
+    'HexRate',
+    'hex_zmq_ts_to_ns',
+    'ns_to_hex_zmq_ts',
+    'hex_ns_now',
+    'hex_zmq_ts_now',
+    'hex_zmq_ts_delta_ms',
 
     # math basic
     'hat',
