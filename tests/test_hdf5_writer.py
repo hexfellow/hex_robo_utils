@@ -6,61 +6,21 @@
 # Date  : 2025-12-04
 ################################################################
 
-import os
-import time
+import os, time
 import multiprocessing
 import threading
+import cv2
 import numpy as np
 
 try:
+    from hex_robo_utils.time_utils import HexRate
     from hex_robo_utils.hdf5_writer import HexHdf5MultiWriter
 except ImportError:
     import sys
     sys.path.insert(
         0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from hex_robo_utils.time_utils import HexRate
     from hex_robo_utils.hdf5_writer import HexHdf5MultiWriter
-
-
-class HexRate:
-
-    def __init__(self, hz: float, spin_threshold_ns: int = 10_000):
-        if hz <= 0:
-            raise ValueError("hz must be greater than 0")
-        if spin_threshold_ns < 0:
-            raise ValueError("spin_threshold_ns must be non-negative")
-        self.__period_ns = int(1_000_000_000 / hz)
-        self.__next_ns = self.__now_ns() + self.__period_ns
-        self.__spin_threshold_ns = spin_threshold_ns
-
-    @staticmethod
-    def __now_ns() -> int:
-        return time.perf_counter_ns()
-
-    def reset(self):
-        self.__next_ns = self.__now_ns() + self.__period_ns
-
-    def sleep(self):
-        target_ns = self.__next_ns
-        now_ns = self.__now_ns()
-        remain_ns = target_ns - now_ns
-        if remain_ns <= 0:
-            needed_period = (now_ns - target_ns) // self.__period_ns + 1
-            self.__next_ns += needed_period * self.__period_ns
-            return
-
-        spin_threshold = min(self.__spin_threshold_ns, self.__period_ns)
-        coarse_sleep_ns = remain_ns - spin_threshold
-        if coarse_sleep_ns > 0:
-            time.sleep(coarse_sleep_ns / 1_000_000_000.0)
-
-        while True:
-            now_ns = self.__now_ns()
-            if now_ns >= target_ns:
-                break
-            if target_ns - now_ns > 50_000:
-                time.sleep(0)
-
-        self.__next_ns += self.__period_ns
 
 
 class MultiArmRGBDRecorder:
@@ -74,7 +34,6 @@ class MultiArmRGBDRecorder:
         arm_hz: int = 1000,
         cam_hz: int = 30,
     ):
-
         self.duration_ns = int(duration_s * 1_000_000_000)
         self.num_arms = num_arms
         self.num_cams = num_cams
@@ -151,7 +110,6 @@ class MultiArmRGBDRecorder:
         self.stop()
 
     def stop(self):
-        """停止所有进程并关闭 writer。"""
         if self._start_time_ns is None:
             return
 
@@ -209,7 +167,7 @@ class MultiArmRGBDRecorder:
             self._writer.create_dataset(
                 "rgb",
                 rgb_group,
-                shape=self.rgb_shape,
+                shape=None,
                 dtype=self.rgb_dtype,
                 chunk_num=1,
                 max_num=None,
@@ -309,7 +267,13 @@ class MultiArmRGBDRecorder:
             get_ts = time.time_ns()
             sen_ts = time.time_ns()
             # 将数据放入队列
-            data_queue.put(("rgb", rgb_group, rgb, get_ts, sen_ts))
+            data_queue.put((
+                "rgb",
+                rgb_group,
+                cv2.imencode('.jpg', rgb)[1].tobytes(),
+                get_ts,
+                sen_ts,
+            ))
             data_queue.put(("depth", depth_group, depth, get_ts, sen_ts))
             fps_cnt += 1
             if fps_cnt >= 100:
@@ -329,13 +293,13 @@ def main():
         out_path,
         duration_s=30.0,
         num_arms=6,
-        num_cams=4,
+        num_cams=3,
         arm_hz=1000,
-        cam_hz=30,
+        cam_hz=33,
     )
     recorder.run()
     print("#" * 50)
-    print(f"Time taken: {(time.perf_counter_ns() - start_ns) * 1e-6}ms")
+    print(f"Time taken: {(time.perf_counter_ns() - start_ns) * 1e-9}s")
     print("#" * 50)
     print("Done.")
 

@@ -144,8 +144,10 @@ __all__ = [
 # Check optional dependencies availability
 from importlib.util import find_spec
 
-# Optional: hdf5
 _HAS_H5PY = find_spec("h5py") is not None
+_HAS_RERUN = find_spec("rerun-sdk") is not None
+
+# Optional: hdf5
 if _HAS_H5PY:
     from .hdf5_reader import HexHdf5Reader
     from .hdf5_writer import HexHdf5Writer
@@ -154,6 +156,15 @@ if _HAS_H5PY:
         'HexHdf5Reader',
         'HexHdf5Writer',
         'HexHdf5MultiWriter',
+    ])
+
+# Optional: rerun
+if _HAS_RERUN:
+    from .rerun_util import HexRerunWriterUtil
+    from .rerun_util import HexRerunParserUtil
+    __all__.extend([
+        'HexRerunWriterUtil',
+        'HexRerunParserUtil',
     ])
 
 # print("#### Thanks for using HEXFELLOW Utilities :) ####")

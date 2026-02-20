@@ -166,3 +166,4 @@ cython_debug/
 *.vsix
 temp
 *h5
+*rrd

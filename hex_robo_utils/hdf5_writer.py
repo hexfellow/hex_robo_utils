@@ -30,6 +30,7 @@ class HexHdf5Writer:
         self.__print_num = 0
         self.__print_interval = print_interval
 
+        self.__vlen_groups: set[str] = set()
         self.__queue = deque()
         self.__stop_event = threading.Event()
         self.__writer_cnt = 0
@@ -57,6 +58,9 @@ class HexHdf5Writer:
         self.__writer_thread.start()
 
     def stop(self):
+        if self.__stop_event.is_set():
+            return
+        
         self.__stop_event.set()
         if self.__writer_thread is not None and self.__writer_thread.is_alive(
         ):
@@ -202,6 +206,7 @@ class HexHdf5Writer:
         d_get = self.__dataset_dict[get_ts_key]
         d_sen = self.__dataset_dict[sen_ts_key]
 
+        is_vlen = group_name in self.__vlen_groups
         batch_size = len(items)
         n_old = ds.shape[0]
         n_new = n_old + batch_size
@@ -217,8 +222,9 @@ class HexHdf5Writer:
         sts_list = []
 
         for group, data, gts, sts in items:
+            if is_vlen and isinstance(data, (bytes, bytearray)):
+                data = np.frombuffer(data, dtype=np.uint8)
             data_list.append(data)
-            # Ensure gts and sts are scalars or 1-element arrays
             if isinstance(gts, np.ndarray):
                 gts_val = gts.item() if gts.size == 1 else gts[0]
             else:
@@ -230,13 +236,15 @@ class HexHdf5Writer:
             gts_list.append(gts_val)
             sts_list.append(sts_val)
 
-        # Stack arrays for batch write
-        data_batch = np.stack(data_list, axis=0)
         gts_batch = np.array(gts_list, dtype=np.int64).reshape(-1, 1)
         sts_batch = np.array(sts_list, dtype=np.int64).reshape(-1, 1)
 
-        # Batch write
-        ds[n_old:n_new, ...] = data_batch
+        if is_vlen:
+            for i, data in enumerate(data_list):
+                ds[n_old + i] = data
+        else:
+            data_batch = np.stack(data_list, axis=0)
+            ds[n_old:n_new, ...] = data_batch
         d_get[n_old:n_new, :] = gts_batch
         d_sen[n_old:n_new, :] = sts_batch
 
@@ -251,9 +259,9 @@ class HexHdf5Writer:
     def create_dataset(
         self,
         group_name: str,
-        shape: tuple,
         dtype: np.dtype,
         chunk_num: int,
+        shape: tuple | None = None,
         max_num: int | None = None,
         compression=None,
     ):
@@ -261,12 +269,17 @@ class HexHdf5Writer:
             self.__group_dict[group_name] = self.__hdf5_file.create_group(
                 group_name)
 
+        has_shape = shape is not None
+        if not has_shape:
+            self.__vlen_groups.add(group_name)
+        actual_dtype = dtype if has_shape else h5py.vlen_dtype(
+            np.dtype(dtype))
         dataset = self.__group_dict[group_name].create_dataset(
             "data",
-            shape=(0, *shape),
-            maxshape=(max_num, *shape),
-            dtype=dtype,
-            chunks=(chunk_num, *shape),
+            shape=(0, *shape) if has_shape else (0, ),
+            maxshape=(max_num, *shape) if has_shape else (max_num, ),
+            dtype=actual_dtype,
+            chunks=(chunk_num, *shape) if has_shape else (chunk_num, ),
             compression=compression,
         )
         get_ts_set = self.__group_dict[group_name].create_dataset(
@@ -292,7 +305,7 @@ class HexHdf5Writer:
     def append_data(
         self,
         group_name: str,
-        data: np.ndarray,
+        data: np.ndarray | bytes,
         get_ts: np.ndarray | int,
         sen_ts: np.ndarray | int,
     ):
@@ -383,9 +396,9 @@ class HexHdf5MultiWriter:
         self,
         msg_type: str,
         group_name: str,
-        shape: tuple,
         dtype: np.dtype,
         chunk_num: int,
+        shape: tuple | None = None,
         max_num: int | None = None,
     ):
         self.__writers[msg_type].create_dataset(
@@ -401,7 +414,7 @@ class HexHdf5MultiWriter:
         self,
         msg_type: str,
         group_name: str,
-        data: np.ndarray,
+        data: np.ndarray | bytes,
         get_ts: np.ndarray | int,
         sen_ts: np.ndarray | int,
     ):
