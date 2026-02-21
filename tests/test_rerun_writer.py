@@ -6,7 +6,8 @@
 # Date  : 2026-02-20
 ################################################################
 
-import os, time, threading
+import os, threading
+import cv2
 import numpy as np
 
 try:
@@ -65,25 +66,48 @@ def main():
                  duration_s: int = 20):
         rate = HexRate(rate_hz)
         for _ in range(int(duration_s * rate_hz)):
+            cam_0_rgb = np.random.randint(0,
+                                          255, (480, 640, 3),
+                                          dtype=np.uint8)
+            cam_0_depth = np.random.randint(0,
+                                            1000, (480, 640),
+                                            dtype=np.uint16)
+            cam_1_rgb = np.random.randint(0,
+                                          255, (480, 640, 3),
+                                          dtype=np.uint8)
+            cam_1_depth = np.random.randint(0,
+                                            1000, (480, 640),
+                                            dtype=np.uint16)
+            cam_2_rgb = np.random.randint(0,
+                                          255, (480, 640, 3),
+                                          dtype=np.uint8)
+            cam_2_depth = np.random.randint(0,
+                                            1000, (480, 640),
+                                            dtype=np.uint16)
+            cam_3_rgb = np.random.randint(0,
+                                          255, (480, 640, 3),
+                                          dtype=np.uint8)
+            cam_3_depth = np.random.randint(0,
+                                            1000, (480, 640),
+                                            dtype=np.uint16)
+            cv2.rectangle(cam_0_rgb, (240, 160), (400, 320), (255, 0, 255), -1)
+            cv2.rectangle(cam_0_depth, (240, 160), (400, 320), 50, -1)
+            cv2.rectangle(cam_1_rgb, (240, 160), (400, 320), (255, 0, 0), -1)
+            cv2.rectangle(cam_1_depth, (240, 160), (400, 320), 100, -1)
+            cv2.rectangle(cam_2_rgb, (240, 160), (400, 320), (0, 255, 0), -1)
+            cv2.rectangle(cam_2_depth, (240, 160), (400, 320), 200, -1)
+            cv2.rectangle(cam_3_rgb, (240, 160), (400, 320), (0, 0, 255), -1)
+            cv2.rectangle(cam_3_depth, (240, 160), (400, 320), 400, -1)
             data = {
-                "ts_ns":
-                time.perf_counter_ns() - start_ns,
-                "cam_0/rgb":
-                np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8),
-                "cam_0/depth":
-                np.random.randint(0, 255, (480, 640), dtype=np.uint16),
-                "cam_1/rgb":
-                np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8),
-                "cam_1/depth":
-                np.random.randint(0, 255, (480, 640), dtype=np.uint16),
-                "cam_2/rgb":
-                np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8),
-                "cam_2/depth":
-                np.random.randint(0, 255, (480, 640), dtype=np.uint16),
-                "cam_3/rgb":
-                np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8),
-                "cam_3/depth":
-                np.random.randint(0, 255, (480, 640), dtype=np.uint16),
+                "ts_ns": time.perf_counter_ns() - start_ns,
+                "cam_0/rgb": cam_0_rgb,
+                "cam_0/depth": cam_0_depth,
+                "cam_1/rgb": cam_1_rgb,
+                "cam_1/depth": cam_1_depth,
+                "cam_2/rgb": cam_2_rgb,
+                "cam_2/depth": cam_2_depth,
+                "cam_3/rgb": cam_3_rgb,
+                "cam_3/depth": cam_3_depth,
             }
             rerun_util.send_data(data)
             rate.sleep()

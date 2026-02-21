@@ -167,3 +167,4 @@ cython_debug/
 temp
 *h5
 *rrd
+*.pkl
