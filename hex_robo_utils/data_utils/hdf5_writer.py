@@ -3,18 +3,16 @@
 ################################################################
 # Copyright 2025 Dong Zhaorui. All rights reserved.
 # Author: Dong Zhaorui 847235539@qq.com
-# Date  : 2025-10-11
+# Date  : 2025-09-19
 ################################################################
 
-import time
-import threading
-import os
+import time, os, threading
 import h5py
 import numpy as np
 from collections import deque
 
 
-class HexHdf5Writer:
+class Hdf5Writer:
 
     def __init__(
         self,
@@ -60,7 +58,7 @@ class HexHdf5Writer:
     def stop(self):
         if self.__stop_event.is_set():
             return
-        
+
         self.__stop_event.set()
         if self.__writer_thread is not None and self.__writer_thread.is_alive(
         ):
@@ -272,8 +270,7 @@ class HexHdf5Writer:
         has_shape = shape is not None
         if not has_shape:
             self.__vlen_groups.add(group_name)
-        actual_dtype = dtype if has_shape else h5py.vlen_dtype(
-            np.dtype(dtype))
+        actual_dtype = dtype if has_shape else h5py.vlen_dtype(np.dtype(dtype))
         dataset = self.__group_dict[group_name].create_dataset(
             "data",
             shape=(0, *shape) if has_shape else (0, ),
@@ -358,17 +355,17 @@ class HexHdf5Writer:
             self.__queue.append(item)
 
 
-class HexHdf5MultiWriter:
+class Hdf5MultiWriter:
 
     def __init__(self, base_dir: str):
         os.makedirs(base_dir, exist_ok=True)
         arm_path = f"{base_dir}/arm.h5"
         rgb_path = f"{base_dir}/rgb.h5"
         depth_path = f"{base_dir}/depth.h5"
-        self.__writers: dict[str, HexHdf5Writer] = {
-            "arm": HexHdf5Writer(arm_path, 10_000, batch_size=1024),
-            "rgb": HexHdf5Writer(rgb_path, 300, batch_size=4),
-            "depth": HexHdf5Writer(depth_path, 300, batch_size=4),
+        self.__writers: dict[str, Hdf5Writer] = {
+            "arm": Hdf5Writer(arm_path, 10_000, batch_size=1024),
+            "rgb": Hdf5Writer(rgb_path, 300, batch_size=4),
+            "depth": Hdf5Writer(depth_path, 300, batch_size=4),
         }
 
     def start(self):
@@ -389,7 +386,7 @@ class HexHdf5MultiWriter:
         self.stop()
 
     # --------------- proxies ---------------
-    def get_writer(self, msg_type: str) -> HexHdf5Writer:
+    def get_writer(self, msg_type: str) -> Hdf5Writer:
         return self.__writers[msg_type]
 
     def create_dataset(
@@ -439,13 +436,3 @@ class HexHdf5MultiWriter:
             get_ts=get_ts,
             sen_ts=sen_ts,
         )
-
-    def now_ns(self):
-        return np.array([time.time_ns()])
-
-    def hex_ts_to_ns(self, ts: dict):
-        try:
-            return np.array([ts["s"] * 1e9 + ts["ns"]])
-        except Exception as e:
-            print(f"hex_ts_to_ns failed: {e}")
-            return np.array([np.inf])

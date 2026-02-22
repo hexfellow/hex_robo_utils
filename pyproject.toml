@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hex_robo_utils"
-version = "0.2.14"
+version = "0.2.15"
 description = "HEXFELLOW Robotics Utilities"
 readme = "README.md"
 license = "Apache-2.0"
@@ -36,7 +36,14 @@ classifiers = [
 [project.optional-dependencies]
 hdf5 = ["h5py>=3.14.0"]
 rerun = ["rerun-sdk>=0.20.0"]
-all = ["h5py>=3.14.0", "rerun-sdk>=0.20.0"]
+joystick = ["pygame>=2.6.1"]
+hello = ["hex_robo_utils>=0.2.0,<0.3.0"]
+all = [
+  "h5py>=3.14.0",
+  "rerun-sdk>=0.20.0",
+  "pygame>=2.6.1",
+  "hex_robo_utils>=0.2.0,<0.3.0",
+]
 
 [tool.pytest.ini_options]
 filterwarnings = [

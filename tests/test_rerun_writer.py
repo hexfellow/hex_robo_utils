@@ -11,18 +11,18 @@ import cv2
 import numpy as np
 
 try:
-    from hex_robo_utils.time_utils import HexRate
-    from hex_robo_utils.rerun_util import HexRerunWriterUtil
+    from hex_robo_utils import HexRate
+    from hex_robo_utils import HexRerunWriter
 except ImportError:
     import sys
     sys.path.insert(
         0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from hex_robo_utils.time_utils import HexRate
-    from hex_robo_utils.rerun_util import HexRerunWriterUtil
+    from hex_robo_utils import HexRate
+    from hex_robo_utils import HexRerunWriter
 
 
 def main():
-    rerun_util = HexRerunWriterUtil(visualize=True)
+    rerun_writer = HexRerunWriter(visualize=True)
 
     list_theta_table = []
     tau = 2.0 * np.pi
@@ -40,7 +40,7 @@ def main():
     os.makedirs(out_path, exist_ok=True)
 
     def robot_func(start_ns: int,
-                   rerun_util: HexRerunWriterUtil,
+                   rerun_writer: HexRerunWriter,
                    list_theta_table: list[np.ndarray],
                    rate_hz: float = 1000.0,
                    duration_s: int = 20):
@@ -57,11 +57,11 @@ def main():
                 "jnt/vel": np.cos(joint_theta),
                 "jnt/eff": np.zeros_like(joint_theta),
             }
-            rerun_util.send_data(data)
+            rerun_writer.append_data(data)
             rate.sleep()
 
     def cam_func(start_ns: int,
-                 rerun_util: HexRerunWriterUtil,
+                 rerun_writer: HexRerunWriter,
                  rate_hz: float = 30.0,
                  duration_s: int = 20):
         rate = HexRate(rate_hz)
@@ -109,18 +109,18 @@ def main():
                 "cam_3/rgb": cam_3_rgb,
                 "cam_3/depth": cam_3_depth,
             }
-            rerun_util.send_data(data)
+            rerun_writer.append_data(data)
             rate.sleep()
 
     start_ns = time.perf_counter_ns()
-    rerun_util.start_record(out_path, "rerun_data")
+    rerun_writer.start_record(out_path, "rerun_data")
 
     thread_list = [
         threading.Thread(
             target=robot_func,
             args=(
                 start_ns,
-                rerun_util,
+                rerun_writer,
                 list_theta_table,
                 robot_rate_hz,
                 duration_s,
@@ -130,7 +130,7 @@ def main():
             target=cam_func,
             args=(
                 start_ns,
-                rerun_util,
+                rerun_writer,
                 cam_rate_hz,
                 duration_s,
             ),
@@ -141,7 +141,7 @@ def main():
     for thread in thread_list:
         thread.join()
 
-    rerun_util.stop_record()
+    rerun_writer.stop_record()
     print(f"Time taken: {(time.perf_counter_ns() - start_ns) * 1e-9}s")
 
 

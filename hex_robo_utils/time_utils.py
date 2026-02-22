@@ -59,32 +59,36 @@ class HexTimeManager(metaclass=SingletonMeta):
 _HEX_TIME_MANAGER = HexTimeManager()
 
 
-def hex_zmq_ts_to_ns(ts: dict) -> int:
-    return ts['s'] * 1_000_000_000 + ts['ns']
+def hex_ts_to_ns(ts: dict) -> int:
+    try:
+        return ts['s'] * 1_000_000_000 + ts['ns']
+    except Exception as e:
+        print(f"hex_ts_to_ns failed: {e}")
+        return np.inf
 
 
-def ns_to_hex_zmq_ts(ns: int) -> dict:
+def ns_to_hex_ts(ns: int) -> dict:
     return {
         "s": ns // 1_000_000_000,
         "ns": ns % 1_000_000_000,
     }
 
 
-def hex_ns_now() -> int:
+def ns_now() -> int:
     return _HEX_TIME_MANAGER.get_now_ns()
 
 
-def hex_zmq_ts_now() -> dict:
-    return ns_to_hex_zmq_ts(hex_ns_now())
+def hex_ts_now() -> dict:
+    return ns_to_hex_ts(ns_now())
 
 
-def hex_zmq_ts_delta_ms(curr_ts, hdr_ts) -> float:
+def hex_ts_delta_ms(curr_ts, hdr_ts) -> float:
     try:
         return (curr_ts['s'] - hdr_ts['s']) * 1_000 + (
             curr_ts['ns'] - hdr_ts['ns']) / 1_000_000
 
     except Exception as e:
-        print(f"hex_zmq_ts_delta_ms failed: {e}")
+        print(f"hex_ts_delta_ms failed: {e}")
         return np.inf
 
 
@@ -96,19 +100,15 @@ class HexRate:
         if spin_threshold_ns < 0:
             raise ValueError("spin_threshold_ns must be non-negative")
         self.__period_ns = int(1_000_000_000 / hz)
-        self.__next_ns = self.__now_ns() + self.__period_ns
+        self.__next_ns = ns_now() + self.__period_ns
         self.__spin_threshold_ns = spin_threshold_ns
 
-    @staticmethod
-    def __now_ns() -> int:
-        return hex_ns_now()
-
     def reset(self):
-        self.__next_ns = self.__now_ns() + self.__period_ns
+        self.__next_ns = ns_now() + self.__period_ns
 
     def sleep(self):
         target_ns = self.__next_ns
-        now_ns = self.__now_ns()
+        now_ns = ns_now()
         remain_ns = target_ns - now_ns
         if remain_ns <= 0:
             needed_period = (now_ns - target_ns) // self.__period_ns + 1
@@ -121,7 +121,7 @@ class HexRate:
             time.sleep(coarse_sleep_ns / 1_000_000_000.0)
 
         while True:
-            now_ns = self.__now_ns()
+            now_ns = ns_now()
             if now_ns >= target_ns:
                 break
             if target_ns - now_ns > 50_000:

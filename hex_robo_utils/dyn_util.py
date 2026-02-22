@@ -115,6 +115,19 @@ class HexDynUtil:
 
         return m_mat, c_mat, g_vec, jac, jac_dot
 
+    # compensation = C(q, dq) @ dq + G(q)
+    def compensation(self, q: np.ndarray, dq: np.ndarray) -> np.ndarray:
+        q = np.ascontiguousarray(q.copy())
+        dq = np.ascontiguousarray(dq.copy())
+
+        # Compute all dynamic parameters
+        dyn.computeAllTerms(self.__model, self.__data, q, dq)
+        dyn.computeCoriolisMatrix(self.__model, self.__data, q, dq)
+        c_mat = self.__data.C
+        g_vec = self.__data.g
+
+        return c_mat @ dq + g_vec
+
     # get [pose_1, pose_2, ..., pose_n]
     def forward_kinematics(
         self,

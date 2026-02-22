@@ -6,9 +6,9 @@
 # Date  : 2025-09-19
 ################################################################
 
-import time
 import h5py
-import numpy as np
+
+from ..time_utils import ns_to_hex_ts
 
 
 class HexHdf5Reader:
@@ -146,24 +146,8 @@ class HexHdf5Reader:
             if not use_ns:
                 ts_list = []
                 for ts_ns in data.reshape(-1):
-                    ts_list.append(self.__ns_to_hex_ts(int(ts_ns)))
+                    ts_list.append(ns_to_hex_ts(int(ts_ns)))
                 return ts_list
             else:
                 return data.reshape(-1)
         return data
-
-    def __ns_to_hex_ts(self, ts: int):
-        return {
-            "s": ts // 1_000_000_000,
-            "ns": ts % 1_000_000_000,
-        }
-
-    def now_ns(self):
-        return np.array([time.time_ns()])
-
-    def hex_ts_to_ns(self, ts: dict):
-        try:
-            return np.array([ts["s"] * 1e9 + ts["ns"]])
-        except Exception as e:
-            print(f"hex_ts_to_ns failed: {e}")
-            return np.array([np.inf])

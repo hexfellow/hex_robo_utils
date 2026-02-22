@@ -13,14 +13,14 @@ import cv2
 import numpy as np
 
 try:
-    from hex_robo_utils.time_utils import HexRate
-    from hex_robo_utils.hdf5_writer import HexHdf5MultiWriter
+    from hex_robo_utils import HexRate
+    from hex_robo_utils import HexHdf5Writer
 except ImportError:
     import sys
     sys.path.insert(
         0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from hex_robo_utils.time_utils import HexRate
-    from hex_robo_utils.hdf5_writer import HexHdf5MultiWriter
+    from hex_robo_utils import HexRate
+    from hex_robo_utils import HexHdf5Writer
 
 
 class MultiArmRGBDRecorder:
@@ -41,7 +41,7 @@ class MultiArmRGBDRecorder:
         self.cam_hz = cam_hz
 
         # 使用多文件 writer，将不同类型数据写入不同的 h5 文件
-        self._writer = HexHdf5MultiWriter(base_dir)
+        self._writer = HexHdf5Writer(base_dir)
 
         self.arm_shape = (7, 3)
         self.arm_dtype = np.float64
