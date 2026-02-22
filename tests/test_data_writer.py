@@ -13,16 +13,28 @@ import numpy as np
 try:
     from hex_robo_utils import HexRate
     from hex_robo_utils import HexRerunWriter
+    from hex_robo_utils import HexHdf5Writer
 except ImportError:
     import sys
     sys.path.insert(
         0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from hex_robo_utils import HexRate
     from hex_robo_utils import HexRerunWriter
+    from hex_robo_utils import HexHdf5Writer
+
+TEST_TYPE = "hdf5"
 
 
 def main():
-    rerun_writer = HexRerunWriter(visualize=True)
+    writer, name = None, None
+    if TEST_TYPE == "hdf5":
+        writer = HexHdf5Writer()
+        name = "hdf5_data"
+    elif TEST_TYPE == "rerun":
+        writer = HexRerunWriter(visualize=True)
+        name = "rerun_data"
+    else:
+        raise ValueError(f"Invalid test type: {TEST_TYPE}")
 
     list_theta_table = []
     tau = 2.0 * np.pi
@@ -40,7 +52,7 @@ def main():
     os.makedirs(out_path, exist_ok=True)
 
     def robot_func(start_ns: int,
-                   rerun_writer: HexRerunWriter,
+                   writer: HexRerunWriter,
                    list_theta_table: list[np.ndarray],
                    rate_hz: float = 1000.0,
                    duration_s: int = 20):
@@ -53,15 +65,18 @@ def main():
             ])
             data = {
                 "ts_ns": time.perf_counter_ns() - start_ns,
-                "jnt/pos": np.sin(joint_theta),
-                "jnt/vel": np.cos(joint_theta),
-                "jnt/eff": np.zeros_like(joint_theta),
+                "arm_0/pos": np.sin(joint_theta),
+                "arm_0/vel": np.cos(joint_theta),
+                "arm_0/eff": np.zeros_like(joint_theta),
+                "arm_1/pos": np.sin(joint_theta),
+                "arm_1/vel": np.cos(joint_theta),
+                "arm_1/eff": np.zeros_like(joint_theta),
             }
-            rerun_writer.append_data(data)
+            writer.append_data(data)
             rate.sleep()
 
     def cam_func(start_ns: int,
-                 rerun_writer: HexRerunWriter,
+                 writer: HexRerunWriter,
                  rate_hz: float = 30.0,
                  duration_s: int = 20):
         rate = HexRate(rate_hz)
@@ -109,18 +124,18 @@ def main():
                 "cam_3/rgb": cam_3_rgb,
                 "cam_3/depth": cam_3_depth,
             }
-            rerun_writer.append_data(data)
+            writer.append_data(data)
             rate.sleep()
 
     start_ns = time.perf_counter_ns()
-    rerun_writer.start_record(out_path, "rerun_data")
+    writer.start_record(out_path, name)
 
     thread_list = [
         threading.Thread(
             target=robot_func,
             args=(
                 start_ns,
-                rerun_writer,
+                writer,
                 list_theta_table,
                 robot_rate_hz,
                 duration_s,
@@ -130,7 +145,7 @@ def main():
             target=cam_func,
             args=(
                 start_ns,
-                rerun_writer,
+                writer,
                 cam_rate_hz,
                 duration_s,
             ),
@@ -141,7 +156,7 @@ def main():
     for thread in thread_list:
         thread.join()
 
-    rerun_writer.stop_record()
+    writer.stop_record()
     print(f"Time taken: {(time.perf_counter_ns() - start_ns) * 1e-9}s")
 
 

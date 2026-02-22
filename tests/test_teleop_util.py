@@ -79,8 +79,8 @@ if _HAS_HELLO:
 
 
 if __name__ == '__main__':
-    # keyboard_main()
+    keyboard_main()
     # if _HAS_JOYSTICK:
     #     joystick_main()
-    if _HAS_HELLO:
-        hello_main()
+    # if _HAS_HELLO:
+    #     hello_main()

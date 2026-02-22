@@ -35,14 +35,14 @@ classifiers = [
 
 [project.optional-dependencies]
 hdf5 = ["h5py>=3.14.0"]
-rerun = ["rerun-sdk>=0.20.0"]
+rerun = ["rerun-sdk[datafusion]>=0.20.0"]
 joystick = ["pygame>=2.6.1"]
-hello = ["hex_robo_utils>=0.2.0,<0.3.0"]
+hello = ["hex_device>=1.3.17,<1.4.0"]
 all = [
   "h5py>=3.14.0",
-  "rerun-sdk>=0.20.0",
+  "rerun-sdk[datafusion]>=0.20.0",
   "pygame>=2.6.1",
-  "hex_robo_utils>=0.2.0,<0.3.0",
+  "hex_device>=1.3.17,<1.4.0",
 ]
 
 [tool.pytest.ini_options]

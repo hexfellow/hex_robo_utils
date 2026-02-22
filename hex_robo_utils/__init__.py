@@ -21,6 +21,7 @@ from .ctrl_util import HexCtrlUtilMitWork
 from .ctrl_util import HexCtrlUtilIntWork
 from .plot_util import HexPlotUtilPlotJuggler
 from .teleop_utils import HexTeleopUtilKeyboard
+from .data_utils import HexPandasReader
 
 # time
 from .time_utils import HexRate
@@ -100,6 +101,7 @@ __all__ = [
     'HexCtrlUtilInt',
     'HexPlotUtilPlotJuggler',
     'HexTeleopUtilKeyboard',
+    'HexPandasReader',
 
     # time
     'HexRate',
@@ -163,26 +165,24 @@ __all__ = [
 from importlib.util import find_spec
 
 _HAS_H5PY = find_spec("h5py") is not None
-_HAS_RERUN = find_spec("rerun-sdk") is not None
+_HAS_RERUN = find_spec("rerun_sdk") is not None
 _HAS_JOYSTICK = find_spec("pygame") is not None
 _HAS_HELLO = find_spec("hex_device") is not None
 
 # Optional: hdf5
 if _HAS_H5PY:
-    from .data_utils import HexHdf5Reader
-    from .data_utils import HexHdf5Writer
+    from .data_utils import HexHdf5Writer, hdf5_to_pd
     __all__.extend([
-        'HexHdf5Reader',
         'HexHdf5Writer',
+        'hdf5_to_pd',
     ])
 
 # Optional: rerun
 if _HAS_RERUN:
-    from .data_utils import HexRerunReader
-    from .data_utils import HexRerunWriter
+    from .data_utils import HexRerunWriter, rerun_to_pd
     __all__.extend([
-        'HexRerunReader',
         'HexRerunWriter',
+        'rerun_to_pd',
     ])
 
 # Optional: joystick

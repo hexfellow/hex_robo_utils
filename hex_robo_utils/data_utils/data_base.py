@@ -33,13 +33,3 @@ class HexDataWriterBase(ABC):
     @abstractmethod
     def stop_record(self):
         pass
-
-
-class HexDataReaderBase(ABC):
-
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def read(self):
-        pass

@@ -9,9 +9,12 @@
 import os, subprocess, signal, atexit, threading
 import numpy as np
 import rerun as rr
+import pandas as pd
+
+from .data_base import HexDataWriterBase
 
 
-class HexRerunWriter:
+class HexRerunWriter(HexDataWriterBase):
 
     def __init__(
         self,
@@ -50,9 +53,6 @@ class HexRerunWriter:
 
         signal.signal(signal.SIGINT, _handler)
         signal.signal(signal.SIGTERM, _handler)
-
-    def __del__(self):
-        self.close()
 
     def close(self):
         with self.__stream_lock:
@@ -141,3 +141,85 @@ class HexRerunWriter:
         stream.set_time("ts_ns", duration=np.timedelta64(ts_ns, "ns"))
         for key, value in data.items():
             stream.log(key, value)
+
+
+def rerun_to_pd(rrd_path: str, pd_dir: str = None) -> None:
+    if pd_dir is None:
+        pd_dir = rrd_path
+
+    has_pkl = os.path.exists("pd_dir") and any(
+        f.endswith('.pkl') for f in os.listdir(pd_dir))
+    if has_pkl:
+        print(f"Found pd cache files in {pd_dir}. You can use them directly.")
+        return
+
+    print(f"Cache not found: {pd_dir}, generating pd files...")
+    os.makedirs(pd_dir, exist_ok=True)
+
+    server = rr.server.Server(datasets={"data": [f"{rrd_path}.rrd"]})
+    try:
+        client = rr.catalog.CatalogClient(server.url())
+        dataset = client.get_dataset(name="data")
+
+        schema = dataset.schema()
+        entity_paths = sorted(
+            set(col.entity_path for col in schema.component_columns()))
+        key_set = set([p.lstrip("/") for p in entity_paths]) - {"__properties"}
+        key_list = list(key_set)
+        key_list.sort()
+
+        for key in key_list:
+            entity_path = "/" + key
+            df = dataset.filter_contents([entity_path
+                                          ]).reader(index="ts_ns").to_pandas()
+            _rerun_pd_post_process(df, key, pd_dir)
+    finally:
+        server.shutdown()
+
+
+def _rerun_pd_post_process(
+    df: pd.DataFrame,
+    key: str,
+    pd_dir: str,
+) -> pd.DataFrame:
+    data_name = None
+    format_name = None
+    data_suffixes = (":scalars", ":blob", ":buffer")
+    format_suffixes = (":media_type", ":format")
+    print(f"df.columns: {df.columns}")
+    for col in df.columns:
+        if col.startswith(f"/{key}"):
+            if col.endswith(data_suffixes):
+                data_name = col
+            elif col.endswith(format_suffixes):
+                format_name = col
+        if data_name is not None and format_name is not None:
+            break
+    if data_name is None:
+        raise ValueError(f"Data column not found for: {key}")
+
+    sen_ts = df["ts_ns"].to_numpy()
+    get_ts = df["log_time"].to_numpy()
+    get_ts = get_ts.astype("datetime64[ns]").astype(np.int64)
+    data_series = df[data_name]
+    if key.endswith("depth"):
+        format_msg = df[format_name][0][0]
+        width, height = format_msg.get("width",
+                                       -1), format_msg.get("height", -1)
+        if width <= 0 or height <= 0:
+            raise ValueError(f"Width or height not found for key: {key}")
+        depths = []
+        for blob in data_series:
+            depth = np.asarray(blob[0],
+                               dtype=np.uint8).view(np.uint16).reshape(
+                                   height, width)
+            depths.append([depth])
+        data_series = pd.Series(depths)
+    final_df = pd.DataFrame({
+        "sen_ts": sen_ts,
+        "get_ts": get_ts,
+        "data": data_series,
+    })
+
+    file_name = key.replace("/", "@")
+    pd.to_pickle(final_df, f"{pd_dir}/{file_name}.pkl")
