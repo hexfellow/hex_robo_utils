@@ -34,15 +34,24 @@ def depth_to_cmap(
     return depth_cmap
 
 
-def deadzone(var, deadzone=0.1):
-    if type(var) != np.ndarray:
-        res = 0.0 if np.fabs(var) < deadzone else var - np.sign(var) * deadzone
-    else:
+def deadzone(var: float | np.ndarray,
+             deadzone: float | np.ndarray = 0.1) -> float | np.ndarray:
+    if isinstance(var, float):
+        assert isinstance(
+            deadzone, float), "When var is a float, deadzone must be a float"
+        return 0.0 if np.fabs(
+            var) < deadzone else var - np.sign(var) * deadzone
+    elif isinstance(var, np.ndarray):
+        assert isinstance(deadzone, float) or (
+            isinstance(deadzone, np.ndarray) and var.shape == deadzone.shape
+        ), "When var is an array, deadzone must be a float or an array with the same shape as var"
         res = var.copy()
         zero_mask = np.fabs(res) < deadzone
         res[zero_mask] = 0.0
-        res[~zero_mask] -= np.sign(res[~zero_mask]) * deadzone
-    return res
+        res[~zero_mask] -= np.sign(res[~zero_mask]) * deadzone[~zero_mask]
+        return res
+    else:
+        raise ValueError("Unsupported variable type")
 
 
 def time_interp(
@@ -50,7 +59,8 @@ def time_interp(
     ts_arr: np.ndarray,
     data_arr: np.ndarray,
 ) -> np.ndarray:
-    assert search_ts.shape[0] == data_arr.shape[0]
+    assert ts_arr.shape[0] == data_arr.shape[
+        0], "**search_ts** and **data_arr** must have the same length"
 
     idx = np.searchsorted(ts_arr, search_ts)
     idx_later = np.clip(idx, 1, ts_arr.shape[0] - 1)
@@ -65,17 +75,51 @@ def time_interp(
         idx_earlier] * weight_earlier
 
 
-def interp_joint(cur_q, tar_joint, err_limit=0.05):
+def remap(
+    value: float | np.ndarray, range: tuple[float | np.ndarray,
+                                            float | np.ndarray],
+    new_range: tuple[float | np.ndarray, float | np.ndarray]
+) -> float | np.ndarray:
+    return (value - range[0]) / (range[1] - range[0]) * (
+        new_range[1] - new_range[0]) + new_range[0]
+
+
+def interp_joint(
+    cur_q: np.ndarray | float,
+    tar_joint: np.ndarray | float,
+    err_limit: np.ndarray | float = 0.05,
+    arrive_limit: np.ndarray | float = 0.10,
+) -> tuple[np.ndarray | float, bool, bool]:
+    assert isinstance(cur_q, np.ndarray) or isinstance(
+        cur_q, float), "**cur_q** must be a numpy array or a float"
+    assert isinstance(err_limit, np.ndarray) or isinstance(
+        err_limit, float), "**err_limit** must be a numpy array or a float"
+    assert isinstance(
+        tar_joint, type(cur_q)), "**tar_joint** must be the same type as cur_q"
+    assert cur_q.shape == tar_joint.shape if isinstance(
+        cur_q, np.ndarray
+    ) else True, "**tar_joint** must have the same shape as cur_q"
+    assert cur_q.shape == err_limit.shape if isinstance(
+        err_limit, np.ndarray
+    ) else True, "**err_limit** must have the same shape as cur_q when err_limit is a numpy array"
+
     err = tar_joint - cur_q
     max_err_fab = np.fabs(err).max()
-    if max_err_fab < err_limit:
-        return tar_joint, False
-    else:
+    arrive_flag = max_err_fab < arrive_limit
+    if max_err_fab > err_limit:
         err_norm = err / max_err_fab
-        return cur_q + err_norm * err_limit, True
+        return cur_q + err_norm * err_limit, True, arrive_flag
+    else:
+        return tar_joint, False, arrive_flag
 
 
-def mit_cmd(pos, vel=None, tau=None, kp=None, kd=None) -> np.ndarray:
+def mit_cmd(
+    pos: None | np.ndarray,
+    vel: None | np.ndarray = None,
+    tau: None | np.ndarray = None,
+    kp: None | np.ndarray = None,
+    kd: None | np.ndarray = None,
+) -> np.ndarray:
     if pos is not None:
         pos_len = pos.shape[0]
         if kp is not None and kd is not None:
@@ -83,30 +127,30 @@ def mit_cmd(pos, vel=None, tau=None, kp=None, kd=None) -> np.ndarray:
             mit_cmd[:, 0] = pos
             if vel is not None:
                 assert vel.shape[
-                    0] == pos_len, "vel must have the same length as pos"
+                    0] == pos_len, "**vel** must have the same length as pos"
                 mit_cmd[:, 1] = vel
             if tau is not None:
                 assert tau.shape[
-                    0] == pos_len, "tau must have the same length as pos"
+                    0] == pos_len, "**tau** must have the same length as pos"
                 mit_cmd[:, 2] = tau
             if kp is not None:
                 assert kp.shape[
-                    0] == pos_len, "kp must have the same length as pos"
+                    0] == pos_len, "**kp** must have the same length as pos"
                 mit_cmd[:, 3] = kp
             if kd is not None:
                 assert kd.shape[
-                    0] == pos_len, "kd must have the same length as pos"
+                    0] == pos_len, "**kd** must have the same length as pos"
                 mit_cmd[:, 4] = kd
         else:
             mit_cmd = np.zeros((pos_len, 3))
             mit_cmd[:, 0] = pos
             if vel is not None:
                 assert vel.shape[
-                    0] == pos_len, "vel must have the same length as pos"
+                    0] == pos_len, "**vel** must have the same length as pos"
                 mit_cmd[:, 1] = vel
             if tau is not None:
                 assert tau.shape[
-                    0] == pos_len, "tau must have the same length as pos"
+                    0] == pos_len, "**tau** must have the same length as pos"
                 mit_cmd[:, 2] = tau
     elif tau is not None:
         mit_cmd = np.zeros((tau.shape[0], 5))
@@ -115,3 +159,21 @@ def mit_cmd(pos, vel=None, tau=None, kp=None, kd=None) -> np.ndarray:
         raise ValueError("Unsupported command type")
 
     return mit_cmd
+
+
+def dof_parser(dof_arr: np.ndarray) -> int:
+    if dof_arr.shape[0] < 3:
+        return {
+            "robot_arm": dof_arr[0],
+            "robot_gripper": dof_arr[1] if len(dof_arr) > 1 else None,
+            "robot_sum": dof_arr.sum(),
+        }
+    else:
+        return {
+            "left_arm": dof_arr[0],
+            "left_gripper": dof_arr[1],
+            "right_arm": dof_arr[2],
+            "right_gripper": dof_arr[3],
+            "left_sum": dof_arr[0] + dof_arr[1],
+            "right_sum": dof_arr[2] + dof_arr[3],
+        }

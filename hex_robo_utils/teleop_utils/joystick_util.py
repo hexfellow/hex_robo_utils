@@ -15,50 +15,46 @@ from ..time_utils import HexRate
 
 
 class HexTeleopUtilJoystick(HexTeleopBase):
+    _JOY_BUTTON_MAPPING = {
+        "L1": 4,
+        "L2": 6,
+        "R1": 5,
+        "R2": 7,
+        "A": 0,
+        "B": 1,
+        "X": 3,
+        "Y": 2,
+        "LA": 11,
+        "RA": 12,
+    }
+    _JOY_AXIS_MAPPING = {
+        "LX": 1,
+        "LY": 0,
+        "RX": 4,
+        "RY": 3,
+        "L2": 2,
+        "R2": 5,
+    }
+    _JOY_HAT_MAPPING = {
+        "HX": 0,
+        "HY": 1,
+    }
 
-    def __init__(
-            self,
-            joy_button_mapping: dict[str, int] = {
-                "L1": 4,
-                "L2": 6,
-                "R1": 5,
-                "R2": 7,
-                "A": 0,
-                "B": 1,
-                "X": 3,
-                "Y": 2,
-                "LA": 11,
-                "RA": 12,
-            },
-            joy_axis_mapping: dict[str, int] = {
-                "LX": 1,
-                "LY": 0,
-                "RX": 4,
-                "RY": 3,
-                "L2": 2,
-                "R2": 5,
-            },
-            joy_hat_mapping: dict[str, int] = {
-                "HX": 0,
-                "HY": 1,
-            }):
+    def __init__(self):
         super().__init__()
 
-        self.__joy_button_mapping = joy_button_mapping
-        self.__joy_axis_mapping = joy_axis_mapping
-        self.__joy_hat_mapping = joy_hat_mapping
         self._value = {
             **{
                 f"axis_{key}": 0.0
-                for key in self.__joy_axis_mapping.keys()
+                for key in self._JOY_AXIS_MAPPING.keys()
             },
             **{
                 f"button_{key}": False
-                for key in self.__joy_button_mapping.keys()
+                for key in self._JOY_BUTTON_MAPPING.keys()
             },
             **{
                 f"hat_{key}": 0.0
-                for key in self.__joy_hat_mapping.keys()
+                for key in self._JOY_HAT_MAPPING.keys()
             },
             "pygame_quit": False,
         }
@@ -84,6 +80,8 @@ class HexTeleopUtilJoystick(HexTeleopBase):
     def _teleop_listener(self):
         rate = HexRate(200.0)
         while self.is_working():
+            rate.sleep()
+
             value = copy.deepcopy(self._value)
 
             changed = False
@@ -92,22 +90,22 @@ class HexTeleopUtilJoystick(HexTeleopBase):
                     value["pygame_quit"] = True
                     changed = True
                 elif event.type == pygconst.JOYAXISMOTION:
-                    for key, idx in self.__joy_axis_mapping.items():
+                    for key, idx in self._JOY_AXIS_MAPPING.items():
                         if event.axis == idx:
                             value[f"axis_{key}"] = event.value
                             changed = True
                 elif event.type == pygconst.JOYBUTTONDOWN:
-                    for key, idx in self.__joy_button_mapping.items():
+                    for key, idx in self._JOY_BUTTON_MAPPING.items():
                         if event.button == idx:
                             value[f"button_{key}"] = True
                             changed = True
                 elif event.type == pygconst.JOYBUTTONUP:
-                    for key, idx in self.__joy_button_mapping.items():
+                    for key, idx in self._JOY_BUTTON_MAPPING.items():
                         if event.button == idx:
                             value[f"button_{key}"] = False
                             changed = True
                 elif event.type == pygconst.JOYHATMOTION:
-                    for key, idx in self.__joy_hat_mapping.items():
+                    for key, idx in self._JOY_HAT_MAPPING.items():
                         value[f"hat_{key}"] = event.value[idx]
                         changed = True
 
@@ -115,5 +113,3 @@ class HexTeleopUtilJoystick(HexTeleopBase):
                 with self._lock:
                     self._value = copy.deepcopy(value)
                     self._value_event.set()
-
-            rate.sleep()

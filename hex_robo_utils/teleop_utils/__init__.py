@@ -6,9 +6,11 @@
 # Date  : 2026-02-22
 ################################################################
 
+from .teleop_base import HexTeleopBase
 from .keyboard_util import HexTeleopUtilKeyboard
 
 __all__ = [
+    'HexTeleopBase',
     'HexTeleopUtilKeyboard',
 ]
 

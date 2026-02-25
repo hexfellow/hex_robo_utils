@@ -6,9 +6,11 @@
 # Date  : 2026-02-22
 ################################################################
 
+from .data_base import HexDataWriterBase
 from .pandas_reader import HexPandasReader
 
 __all__ = [
+    'HexDataWriterBase',
     'HexPandasReader',
 ]
 

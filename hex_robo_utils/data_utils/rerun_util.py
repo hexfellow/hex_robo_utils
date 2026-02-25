@@ -10,8 +10,10 @@ import os, subprocess, signal, atexit, threading
 import numpy as np
 import rerun as rr
 import pandas as pd
+from collections import deque
 
 from .data_base import HexDataWriterBase
+from ..time_utils import ns_now, HexRate
 
 
 class HexRerunWriter(HexDataWriterBase):
@@ -41,9 +43,11 @@ class HexRerunWriter(HexDataWriterBase):
             )
             self.__live_stream.connect_grpc(
                 f"rerun+http://127.0.0.1:9876/proxy")
+            self.__live_time = ns_now()
 
         self.__record_stream: rr.RecordingStream | None = None
         self.__stream_lock = threading.Lock()
+        self.__record_time = ns_now()
 
         atexit.register(self.close)
 
@@ -54,7 +58,19 @@ class HexRerunWriter(HexDataWriterBase):
         signal.signal(signal.SIGINT, _handler)
         signal.signal(signal.SIGTERM, _handler)
 
+        self.__send_thread = threading.Thread(
+            target=self.__send_loop,
+            daemon=True,
+        )
+        self.__send_queue = deque(maxlen=100)
+        self.__send_event = threading.Event()
+        self.__send_event.set()
+        self.__send_thread.start()
+
     def close(self):
+        self.__send_event.clear()
+        self.__send_thread.join()
+
         with self.__stream_lock:
             if self.__live_stream is not None:
                 print(
@@ -81,15 +97,11 @@ class HexRerunWriter(HexDataWriterBase):
 
     def append_data(self, data: dict[str, np.ndarray | int | float]):
         ts_ns, log_data = self.__parse_data(data)
-
-        with self.__stream_lock:
-            if self.__live_stream is not None:
-                self.__log_data(self.__live_stream, ts_ns, log_data)
-            if self.__record_stream is not None:
-                self.__log_data(self.__record_stream, ts_ns, log_data)
+        self.__send_queue.append((ts_ns, log_data))
 
     def start_record(self, path: str, name: str):
         if self.__record_stream is not None:
+            print(f"Record already started")
             return
 
         with self.__stream_lock:
@@ -99,9 +111,11 @@ class HexRerunWriter(HexDataWriterBase):
             )
             self.__record_stream.save(f"{path}/{name}.rrd")
             print(f"Record started: {path}/{name}.rrd")
+        self.__record_time = ns_now()
 
     def stop_record(self):
         if self.__record_stream is None:
+            print(f"Record not started")
             return
 
         with self.__stream_lock:
@@ -117,9 +131,10 @@ class HexRerunWriter(HexDataWriterBase):
         log_data = {}
         for key, value in data.items():
             if key == "ts_ns":
-                ts_ns = value
+                ts_ns = int(value)
             elif key.endswith("rgb"):
-                img = rr.Image(np.ascontiguousarray(value, dtype=np.uint8))
+                img = rr.Image(np.ascontiguousarray(value, dtype=np.uint8),
+                               color_model=rr.ColorModel.BGR)
                 img = img.compress(jpeg_quality=75)
                 log_data[key] = img
             elif key.endswith("depth"):
@@ -141,6 +156,30 @@ class HexRerunWriter(HexDataWriterBase):
         stream.set_time("ts_ns", duration=np.timedelta64(ts_ns, "ns"))
         for key, value in data.items():
             stream.log(key, value)
+
+    def __send_loop(self):
+        rate = HexRate(100)
+        while self.__send_event.is_set():
+            rate.sleep()
+
+            while True:
+                try:
+                    ts_ns, log_data = self.__send_queue.popleft()
+                    with self.__stream_lock:
+                        if self.__live_stream is not None:
+                            self.__log_data(
+                                self.__live_stream,
+                                ts_ns - self.__live_time,
+                                log_data,
+                            )
+                        if self.__record_stream is not None:
+                            self.__log_data(
+                                self.__record_stream,
+                                ts_ns - self.__record_time,
+                                log_data,
+                            )
+                except IndexError:
+                    continue
 
 
 def rerun_to_pd(rrd_path: str, pd_dir: str = None) -> None:

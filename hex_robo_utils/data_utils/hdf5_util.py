@@ -314,6 +314,8 @@ class HexHdf5Writer(HexDataWriterBase):
 
     def __init__(self):
         self.__writers: dict[str, Hdf5Writer] | None = None
+        self.__writers_ready = threading.Event()
+        self.__record_time = ns_now()
 
     def close(self):
         self.stop_record()
@@ -322,7 +324,12 @@ class HexHdf5Writer(HexDataWriterBase):
         self,
         data: dict[str, np.ndarray | bytes],
     ):
-        ts_ns = data.get("ts_ns", None)
+        if not self.__writers_ready.is_set():
+            return
+
+        ts_ns = int(data.get("ts_ns", None))
+        if ts_ns > self.__record_time:
+            ts_ns = ts_ns - self.__record_time
         for key, value in data.items():
             if key == "ts_ns":
                 continue
@@ -355,7 +362,8 @@ class HexHdf5Writer(HexDataWriterBase):
                 raise ValueError(f"Unsupported data type: {key}")
 
     def start_record(self, path: str, name: str):
-        if self.__writers is not None:
+        if self.__writers_ready.is_set():
+            print(f"Record already started")
             return
 
         record_dir = f"{path}/{name}"
@@ -367,11 +375,15 @@ class HexHdf5Writer(HexDataWriterBase):
         }
         for writer in self.__writers.values():
             writer.start()
+        self.__cur_time = ns_now()
+        self.__writers_ready.set()
 
     def stop_record(self):
-        if self.__writers is None:
+        if not self.__writers_ready.is_set():
+            print(f"Record not started")
             return
 
+        self.__writers_ready.clear()
         for key, writer in self.__writers.items():
             print(f"Stopping writer for {key}")
             writer.stop()

@@ -14,6 +14,7 @@ from typing import Tuple, List
 from hex_robo_utils.math_utils import trans2part, part2trans
 from hex_robo_utils.math_utils import trans_inv, trans2se3
 from hex_robo_utils.math_utils import angle_norm, hat
+from hex_robo_utils.common_utils import deadzone
 
 
 class HexDynUtil:
@@ -271,14 +272,6 @@ class HexFeedbackUtil:
         self.__kd = kd.copy()
         self.__deadzone = deadzone.copy()
 
-    def __deadzone_process(self, var: np.ndarray) -> np.ndarray:
-        res = var.copy()
-        zero_mask = np.fabs(res) < self.__deadzone
-        res[zero_mask] = 0.0
-        res[~zero_mask] -= np.sign(
-            res[~zero_mask]) * self.__deadzone[~zero_mask]
-        return res
-
     def __call__(
         self,
         leader_state: np.ndarray,
@@ -288,4 +281,4 @@ class HexFeedbackUtil:
         q_err = follower_q - leader_state[:, 0]
         dq_err = tar_dq - leader_state[:, 1]
         tau_fb = self.__kp * q_err + self.__kd * dq_err
-        return self.__deadzone_process(tau_fb)
+        return deadzone(tau_fb, self.__deadzone)
