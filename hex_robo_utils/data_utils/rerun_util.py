@@ -238,6 +238,7 @@ def _rerun_pd_post_process(
         raise ValueError(f"Data column not found for: {key}")
 
     sen_ts = df["ts_ns"].to_numpy()
+    sen_ts = sen_ts.astype("datetime64[ns]").astype(np.int64)
     get_ts = df["log_time"].to_numpy()
     get_ts = get_ts.astype("datetime64[ns]").astype(np.int64)
     data_series = df[data_name]
