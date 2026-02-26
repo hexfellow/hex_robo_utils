@@ -161,19 +161,20 @@ def mit_cmd(
     return mit_cmd
 
 
-def dof_parser(dof_arr: np.ndarray) -> int:
-    if dof_arr.shape[0] < 3:
+def dof_parser(dof_arr: np.ndarray, is_hello: bool = False) -> int:
+    if is_hello:
         return {
             "robot_arm": dof_arr[0],
-            "robot_gripper": dof_arr[1] if len(dof_arr) > 1 else None,
-            "robot_sum": dof_arr.sum(),
+            "robot_gripper": 1,
+            "robot_sum": dof_arr[0] + 1,
+            "joy_axis": 2,
+            "joy_button": 4,
+            "hello_sum": dof_arr[0] + dof_arr[1],
         }
     else:
+        has_gripper = dof_arr.shape[0] > 1
         return {
-            "left_arm": dof_arr[0],
-            "left_gripper": dof_arr[1],
-            "right_arm": dof_arr[2],
-            "right_gripper": dof_arr[3],
-            "left_sum": dof_arr[0] + dof_arr[1],
-            "right_sum": dof_arr[2] + dof_arr[3],
+            "robot_arm": dof_arr[0],
+            "robot_gripper": dof_arr[1] if has_gripper else None,
+            "robot_sum": dof_arr[0] + (dof_arr[1] if has_gripper else 0),
         }

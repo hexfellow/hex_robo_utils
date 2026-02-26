@@ -62,7 +62,7 @@ class HexRerunWriter(HexDataWriterBase):
             target=self.__send_loop,
             daemon=True,
         )
-        self.__send_queue = deque(maxlen=100)
+        self.__send_queue = deque(maxlen=2000)
         self.__send_event = threading.Event()
         self.__send_event.set()
         self.__send_thread.start()
@@ -96,8 +96,7 @@ class HexRerunWriter(HexDataWriterBase):
             self.__viewer_proc = None
 
     def append_data(self, data: dict[str, np.ndarray | int | float]):
-        ts_ns, log_data = self.__parse_data(data)
-        self.__send_queue.append((ts_ns, log_data))
+        self.__send_queue.append(data)
 
     def start_record(self, path: str, name: str):
         if self.__record_stream is not None:
@@ -158,13 +157,14 @@ class HexRerunWriter(HexDataWriterBase):
             stream.log(key, value)
 
     def __send_loop(self):
-        rate = HexRate(100)
+        rate = HexRate(2e3)
         while self.__send_event.is_set():
             rate.sleep()
 
             while True:
                 try:
-                    ts_ns, log_data = self.__send_queue.popleft()
+                    data = self.__send_queue.popleft()
+                    ts_ns, log_data = self.__parse_data(data)
                     with self.__stream_lock:
                         if self.__live_stream is not None:
                             self.__log_data(
@@ -179,14 +179,14 @@ class HexRerunWriter(HexDataWriterBase):
                                 log_data,
                             )
                 except IndexError:
-                    continue
+                    break
 
 
 def rerun_to_pd(rrd_path: str, pd_dir: str = None) -> None:
     if pd_dir is None:
         pd_dir = rrd_path
 
-    has_pkl = os.path.exists("pd_dir") and any(
+    has_pkl = os.path.exists(pd_dir) and any(
         f.endswith('.pkl') for f in os.listdir(pd_dir))
     if has_pkl:
         print(f"Found pd cache files in {pd_dir}. You can use them directly.")
