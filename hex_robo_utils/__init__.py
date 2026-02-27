@@ -42,6 +42,8 @@ from .common_utils import time_interp
 from .common_utils import interp_joint
 from .common_utils import mit_cmd
 from .common_utils import dof_parser
+from .common_utils import arm_pos_limit
+from .common_utils import gripper_pos_limit
 
 # basic
 from .math_utils import hat
@@ -126,6 +128,8 @@ __all__ = [
     'interp_joint',
     'mit_cmd',
     'dof_parser',
+    'arm_pos_limit',
+    'gripper_pos_limit',
 
     # math basic
     'hat',

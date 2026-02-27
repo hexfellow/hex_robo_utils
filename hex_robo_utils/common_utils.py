@@ -9,6 +9,7 @@
 import time
 import cv2
 import numpy as np
+from .math_utils import angle_norm
 
 
 def wait_client(client, timeout: float = 5.0):
@@ -178,3 +179,35 @@ def dof_parser(dof_arr: np.ndarray, is_hello: bool = False) -> int:
             "robot_gripper": dof_arr[1] if has_gripper else None,
             "robot_sum": dof_arr[0] + (dof_arr[1] if has_gripper else 0),
         }
+
+
+def arm_pos_limit(
+    arm_pos: np.ndarray,
+    lower_bound: np.ndarray,
+    upper_bound: np.ndarray,
+) -> np.ndarray:
+    normed_rads = angle_norm(arm_pos)
+    outside = (normed_rads < lower_bound) | (normed_rads > upper_bound)
+    if not np.any(outside):
+        return normed_rads
+
+    lower_dist = np.fabs(angle_norm((normed_rads - lower_bound)[outside]))
+    upper_dist = np.fabs(angle_norm((normed_rads - upper_bound)[outside]))
+    choose_lower = lower_dist < upper_dist
+    choose_upper = ~choose_lower
+
+    outside_full = np.flatnonzero(outside)
+    outside_lower = outside_full[choose_lower]
+    outside_upper = outside_full[choose_upper]
+    normed_rads[outside_lower] = lower_bound[outside_lower]
+    normed_rads[outside_upper] = upper_bound[outside_upper]
+
+    return normed_rads
+
+
+def gripper_pos_limit(
+    gripper_pos: np.ndarray,
+    lower_bound: np.ndarray,
+    upper_bound: np.ndarray,
+) -> np.ndarray:
+    return np.clip(gripper_pos, lower_bound, upper_bound)
