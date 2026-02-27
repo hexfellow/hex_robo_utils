@@ -80,8 +80,8 @@ def remap(
                                             float | np.ndarray],
     new_range: tuple[float | np.ndarray, float | np.ndarray]
 ) -> float | np.ndarray:
-    return (value - range[0]) / (range[1] - range[0]) * (
-        new_range[1] - new_range[0]) + new_range[0]
+    ratio = np.clip((value - range[0]) / (range[1] - range[0]), 0.0, 1.0)
+    return ratio * (new_range[1] - new_range[0]) + new_range[0]
 
 
 def interp_joint(
