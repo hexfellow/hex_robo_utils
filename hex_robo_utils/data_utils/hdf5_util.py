@@ -390,41 +390,53 @@ class HexHdf5Writer(HexDataWriterBase):
         self.__writers = None
 
 
-def hdf5_to_pd(hdf5_path: str, pd_dir: str = None) -> None:
+def hdf5_to_pd(hdf5_path: str, pd_dir: str = None, quiet: bool = True) -> None:
     if pd_dir is None:
         pd_dir = hdf5_path
 
     has_pkl = os.path.exists(pd_dir) and any(
         f.endswith('.pkl') for f in os.listdir(pd_dir))
     if has_pkl:
-        print(f"Found pd cache files in {pd_dir}. You can use them directly.")
+        if not quiet:
+            print(
+                f"Found pd cache files in {pd_dir}. You can use them directly."
+            )
         return
 
-    print(f"Cache not found: {pd_dir}, generating pd files...")
+    if not quiet:
+        print(f"Cache not found: {pd_dir}, generating pd files...")
     os.makedirs(pd_dir, exist_ok=True)
 
     for h5_file in sorted(os.listdir(hdf5_path)):
         if not h5_file.endswith(".h5"):
             continue
         with h5py.File(os.path.join(hdf5_path, h5_file), "r") as f:
-            _hdf5_visit_groups(f, "", pd_dir)
+            _hdf5_visit_groups(f, "", pd_dir, quiet)
 
 
-def _hdf5_visit_groups(group, prefix: str, pd_dir: str) -> None:
+def _hdf5_visit_groups(
+    group,
+    prefix: str,
+    pd_dir: str,
+    quiet: bool = True,
+) -> None:
     for name in group.keys():
         item = group[name]
         path = f"{prefix}/{name}" if prefix else name
         if not isinstance(item, h5py.Group):
             continue
         if "data" in item and "get_ts" in item and "sen_ts" in item:
-            _hdf5_group_to_pkl(item, path, pd_dir)
+            _hdf5_group_to_pkl(item, path, pd_dir, quiet)
         else:
-            _hdf5_visit_groups(item, path, pd_dir)
+            _hdf5_visit_groups(item, path, pd_dir, quiet)
 
 
-def _hdf5_group_to_pkl(group, key: str, pd_dir: str) -> None:
-    import pandas as pd
-
+def _hdf5_group_to_pkl(
+    group,
+    key: str,
+    pd_dir: str,
+    quiet: bool = True,
+) -> None:
     sen_ts = group["sen_ts"][:].flatten()
     get_ts = group["get_ts"][:].flatten()
     data_ds = group["data"]
@@ -443,4 +455,5 @@ def _hdf5_group_to_pkl(group, key: str, pd_dir: str) -> None:
 
     file_name = key.replace("/", "@")
     pd.to_pickle(final_df, f"{pd_dir}/{file_name}.pkl")
-    print(f"  Saved: {file_name}.pkl ({n} samples)")
+    if not quiet:
+        print(f"  Saved: {file_name}.pkl ({n} samples)")

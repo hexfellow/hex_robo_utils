@@ -10,12 +10,12 @@ import os
 import cv2
 
 try:
-    from hex_robo_utils import HexPandasReader, hdf5_to_pd, rerun_to_pd
+    from hex_robo_utils import HexPandasRecordReader, hdf5_to_pd, rerun_to_pd
 except ImportError:
     import sys
     sys.path.insert(
         0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from hex_robo_utils import HexPandasReader, hdf5_to_pd, rerun_to_pd
+    from hex_robo_utils import HexPandasRecordReader, hdf5_to_pd, rerun_to_pd
 
 TEST_TYPE = "rerun"
 
@@ -25,16 +25,16 @@ def main():
     if TEST_TYPE == "hdf5":
         raw_path = "multi_arm_rgbd/hdf5_data"
         pd_path = f"{raw_path}_pd"
-        hdf5_to_pd(raw_path, pd_path)
+        hdf5_to_pd(raw_path, pd_path, quiet=False)
     elif TEST_TYPE == "rerun":
         raw_path = "multi_arm_rgbd/rerun_data"
         pd_path = f"{raw_path}_pd"
-        rerun_to_pd(raw_path, pd_path)
+        rerun_to_pd(raw_path, pd_path, quiet=False)
     else:
         raise ValueError(f"Invalid test type: {TEST_TYPE}")
 
-    reader = HexPandasReader(pd_path)
-    print(reader.summary())
+    reader = HexPandasRecordReader(pd_path)
+    reader.summary()
     print(reader.get_keys())
 
     # jnt_pos
@@ -47,6 +47,7 @@ def main():
     # rgb
     cam_rgb_dict = reader.get_data("cam_0/rgb")
     print(cam_rgb_dict["sen_ts"].shape, cam_rgb_dict["data"].shape)
+    cv2.imshow("cam_rgb", cam_rgb_dict["data"][0])
 
     # depth
     cam_depth_dict = reader.get_data("cam_0/depth")
@@ -62,10 +63,9 @@ def main():
         dtype=cv2.CV_8U,
     )
     depth_cmap = cv2.applyColorMap(depth_u8, cv2.COLORMAP_JET)
+    cv2.imshow("cam_depth", depth_cmap)
 
     # show rgb and depth
-    cv2.imshow("cam_rgb", cam_rgb_dict["data"][0])
-    cv2.imshow("cam_depth", depth_cmap)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 

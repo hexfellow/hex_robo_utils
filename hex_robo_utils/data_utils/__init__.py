@@ -7,11 +7,15 @@
 ################################################################
 
 from .data_base import HexDataWriterBase
-from .pandas_reader import HexPandasReader
+from .pandas_utils import HexPandasRecordReader
+from .pandas_utils import HexPandasTrainReader
+from .pandas_utils import HexPandasTrainWriter
 
 __all__ = [
     'HexDataWriterBase',
-    'HexPandasReader',
+    'HexPandasRecordReader',
+    'HexPandasTrainReader',
+    'HexPandasTrainWriter',
 ]
 
 # Check optional dependencies availability

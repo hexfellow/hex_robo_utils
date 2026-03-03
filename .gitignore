@@ -168,3 +168,4 @@ temp
 *h5
 *rrd
 *.pkl
+*.parquet

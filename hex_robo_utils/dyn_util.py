@@ -41,7 +41,6 @@ class HexDynUtil:
 
         ### gravity vector
         if isinstance(gravity, np.ndarray):
-            gravity = np.ascontiguousarray(gravity)
             self.__model.set_gravity(gravity)
 
     def get_gravity(self) -> np.ndarray:
@@ -51,7 +50,7 @@ class HexDynUtil:
             self,
             gravity: np.ndarray = np.array([0, 0, -9.81]),
     ):
-        gravity = np.ascontiguousarray(gravity)
+        gravity = np.ascontiguousarray(np.array(gravity, dtype=np.float64))
         self.__model.set_gravity(gravity)
 
     def get_joint_num(self) -> int:
@@ -79,8 +78,8 @@ class HexDynUtil:
         dq: np.ndarray,
         base_frame: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        q = np.ascontiguousarray(q.copy())
-        dq = np.ascontiguousarray(dq.copy())
+        q = np.ascontiguousarray(np.array(q, dtype=np.float64))
+        dq = np.ascontiguousarray(np.array(dq, dtype=np.float64))
 
         # Compute all dynamic parameters
         dyn.computeAllTerms(self.__model, self.__data, q, dq)
@@ -118,8 +117,8 @@ class HexDynUtil:
 
     # compensation = C(q, dq) @ dq + G(q)
     def compensation(self, q: np.ndarray, dq: np.ndarray) -> np.ndarray:
-        q = np.ascontiguousarray(q.copy())
-        dq = np.ascontiguousarray(dq.copy())
+        q = np.ascontiguousarray(np.array(q, dtype=np.float64))
+        dq = np.ascontiguousarray(np.array(dq, dtype=np.float64))
 
         # Compute all dynamic parameters
         dyn.computeAllTerms(self.__model, self.__data, q, dq)
@@ -134,7 +133,7 @@ class HexDynUtil:
         self,
         q: np.ndarray,
     ) -> List[Tuple[np.ndarray, np.ndarray]]:
-        q = np.ascontiguousarray(q.copy())
+        q = np.ascontiguousarray(np.array(q, dtype=np.float64))
 
         # Compute forward kinematics to update joint placements
         dyn.forwardKinematics(self.__model, self.__data, q)
@@ -161,7 +160,7 @@ class HexDynUtil:
         damp: float = 1e-12,
         max_iter: int = 300,
     ) -> Tuple[bool, np.ndarray, float]:
-        result_q = np.ascontiguousarray(start_q.copy())
+        result_q = np.ascontiguousarray(np.array(start_q, dtype=np.float64))
         trans_end_tar_in_base = copy.deepcopy(
             part2trans(
                 tar_pose[0],

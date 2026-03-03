@@ -7,6 +7,7 @@
 ################################################################
 
 import os, subprocess, signal, atexit, threading
+import cv2
 import numpy as np
 import rerun as rr
 import pandas as pd
@@ -182,17 +183,21 @@ class HexRerunWriter(HexDataWriterBase):
                     break
 
 
-def rerun_to_pd(rrd_path: str, pd_dir: str = None) -> None:
+def rerun_to_pd(rrd_path: str, pd_dir: str = None, quiet: bool = True) -> None:
     if pd_dir is None:
         pd_dir = rrd_path
 
     has_pkl = os.path.exists(pd_dir) and any(
         f.endswith('.pkl') for f in os.listdir(pd_dir))
     if has_pkl:
-        print(f"Found pd cache files in {pd_dir}. You can use them directly.")
+        if not quiet:
+            print(
+                f"Found pd cache files in {pd_dir}. You can use them directly."
+            )
         return
 
-    print(f"Cache not found: {pd_dir}, generating pd files...")
+    if not quiet:
+        print(f"Cache not found: {pd_dir}, generating pd files...")
     os.makedirs(pd_dir, exist_ok=True)
 
     server = rr.server.Server(datasets={"data": [f"{rrd_path}.rrd"]})
@@ -211,7 +216,7 @@ def rerun_to_pd(rrd_path: str, pd_dir: str = None) -> None:
             entity_path = "/" + key
             df = dataset.filter_contents([entity_path
                                           ]).reader(index="ts_ns").to_pandas()
-            _rerun_pd_post_process(df, key, pd_dir)
+            _rerun_pd_post_process(df, key, pd_dir, quiet)
     finally:
         server.shutdown()
 
@@ -220,12 +225,14 @@ def _rerun_pd_post_process(
     df: pd.DataFrame,
     key: str,
     pd_dir: str,
+    quiet: bool = True,
 ) -> pd.DataFrame:
     data_name = None
     format_name = None
     data_suffixes = (":scalars", ":blob", ":buffer")
     format_suffixes = (":media_type", ":format")
-    print(f"df.columns: {df.columns}")
+    if not quiet:
+        print(f"df.columns: {df.columns}")
     for col in df.columns:
         if col.startswith(f"/{key}"):
             if col.endswith(data_suffixes):
