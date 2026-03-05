@@ -83,24 +83,34 @@ class HexPandasTrainReader:
             raise FileNotFoundError(f"Directory not found: {data_dir}")
 
         self.__data_dir = data_dir
-        self.__manifest: list[dict] = []
+        self.__manifest: dict[str, dict] = {}
         self.__sample_nums = [0]
 
         manifest_path = f"{data_dir}/manifest.json"
         if not os.path.exists(manifest_path):
             raise FileNotFoundError(
-                f"Manifest not found: {data_dir}/manifest.json")
+                f"Manifest not found: {manifest_path}")
         with open(manifest_path, "r", encoding="utf-8") as f:
             loaded = json.load(f)
 
-        if isinstance(loaded, dict):
-            self.__manifest = loaded.get("files", [])
+        if isinstance(loaded, dict) and "files" not in loaded:
+            self.__manifest = {k: v for k, v in loaded.items()}
         else:
-            self.__manifest = loaded
+            files = loaded.get("files", loaded) if isinstance(loaded, dict) else loaded
+            self.__manifest = {}
+            for f in files:
+                if isinstance(f, dict):
+                    fn = f.get("file")
+                    if fn:
+                        self.__manifest[fn] = {k: v for k, v in f.items() if k != "file"}
+                else:
+                    self.__manifest[str(f)] = {}
 
-        self.__manifest = sorted(self.__manifest, key=lambda x: x["idx"])
+        self.__manifest_list = sorted(
+            self.__manifest.items(), key=lambda x: x[1].get("idx", 0)
+        )
         total = 0
-        for file_info in self.__manifest:
+        for _file_name, file_info in self.__manifest_list:
             total += file_info["samples"]
             self.__sample_nums.append(total)
         self.__sample_nums = np.array(self.__sample_nums)
@@ -119,16 +129,16 @@ class HexPandasTrainReader:
         print(f"HexPandasTrainReader: {self.__data_dir}")
         print(f"  Total files: {len(self.__manifest)}")
         print(f"  Total samples: {total}")
-        for file_info in self.__manifest:
+        for file_name, file_info in self.__manifest_list:
             ep = file_info.get("episode", "?")
             ei = file_info.get("end_idx", "?")
-            print(f"    {file_info['file']}: {file_info['samples']} samples, episode={ep}, end_idx={ei}")
+            print(f"    {file_name}: {file_info['samples']} samples, episode={ep}, end_idx={ei}")
 
     def get_keys(self) -> list[str]:
         return self.__keys
 
-    def get_manifest(self) -> list[dict]:
-        """Return file list, each with file, idx, samples, episode, end_idx."""
+    def get_manifest(self) -> dict[str, dict]:
+        """Return manifest dict: file_name -> {idx, samples, episode, end_idx, size}."""
         return self.__manifest.copy()
 
     def get_data(self, idx: int) -> dict[str, np.ndarray]:
@@ -145,7 +155,7 @@ class HexPandasTrainReader:
             self.__lru_cache.move_to_end(file_idx)
             return self.__lru_cache[file_idx]
 
-        file_name = self.__manifest[file_idx]["file"]
+        file_name = self.__manifest_list[file_idx][0]
         df = pd.read_pickle(f"{self.__data_dir}/{file_name}")
         self.__keys = df.columns.tolist()
         data_dict = {key: df[key][0] for key in self.__keys}
@@ -182,7 +192,7 @@ class HexPandasTrainWriter:
         self.__switch_bytes = int(max(switch_gb * 1024**3, 1024**2))
 
         self.__manifest_path = f"{self.__data_dir}/manifest.json"
-        self.__manifest: list[dict] = []
+        self.__manifest: dict[str, dict] = {}
         self.__episode_boundaries: list[int] = []
 
         self.__load_existing_manifest()
@@ -194,14 +204,14 @@ class HexPandasTrainWriter:
         self.__flush_current_file()
 
     def summary(self):
-        total = sum(item["samples"] for item in self.__manifest)
+        total = sum(info["samples"] for info in self.__manifest.values())
         print(f"HexPandasWriter: {self.__data_dir}")
         print(f"  Total files: {len(self.__manifest)}")
         print(f"  Total samples: {total}")
-        for file_info in self.__manifest:
+        for file_name, file_info in sorted(self.__manifest.items(), key=lambda x: x[1]["idx"]):
             ep = file_info.get("episode", "?")
             ei = file_info.get("end_idx", "?")
-            print(f"    {file_info['file']}: {file_info['samples']} samples, episode={ep}, end_idx={ei}")
+            print(f"    {file_name}: {file_info['samples']} samples, episode={ep}, end_idx={ei}")
 
     def write_episode(self, data_dict: dict[str, np.ndarray]) -> None:
         """Write one episode. Each call adds one episode; flush when over threshold. Each file records episode count and end_idx list."""
@@ -233,12 +243,17 @@ class HexPandasTrainWriter:
         if os.path.exists(self.__manifest_path):
             with open(self.__manifest_path, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
-            if isinstance(loaded, dict):
-                self.__manifest = loaded.get("files", [])
+            if isinstance(loaded, dict) and "files" not in loaded:
+                self.__manifest = {k: v for k, v in loaded.items()}
             else:
-                self.__manifest = loaded
+                files = loaded.get("files", loaded) if isinstance(loaded, dict) else loaded
+                self.__manifest = {}
+                for f in files:
+                    if isinstance(f, dict) and f.get("file"):
+                        fn = f["file"]
+                        self.__manifest[fn] = {k: v for k, v in f.items() if k != "file"}
             if self.__manifest:
-                self.__cur_idx = self.__manifest[-1]["idx"] + 1
+                self.__cur_idx = max(info["idx"] for info in self.__manifest.values()) + 1
 
     def __flush_current_file(self):
         if not self.__cur_data:
@@ -252,14 +267,13 @@ class HexPandasTrainWriter:
         episode = len(self.__episode_boundaries)
         end_idx = self.__episode_boundaries.copy()
 
-        self.__manifest.append({
-            "file": file_name,
+        self.__manifest[file_name] = {
             "idx": self.__cur_idx,
             "samples": samples,
             "size": self.__current_size_bytes(),
             "episode": episode,
             "end_idx": end_idx,
-        })
+        }
 
         self.__cur_idx += 1
         self.__cur_data = {}
@@ -267,9 +281,8 @@ class HexPandasTrainWriter:
         self.__save_manifest()
 
     def __save_manifest(self) -> None:
-        manifest_data = {"files": self.__manifest}
         with open(self.__manifest_path, "w", encoding="utf-8") as f:
-            json.dump(manifest_data, f, indent=2)
+            json.dump(self.__manifest, f, indent=2)
 
     def __current_size_bytes(self) -> int:
         if not self.__cur_data:
