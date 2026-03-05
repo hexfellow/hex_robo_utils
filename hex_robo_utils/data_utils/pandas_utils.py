@@ -183,7 +183,7 @@ class HexPandasTrainWriter:
 
         self.__manifest_path = f"{self.__data_dir}/manifest.json"
         self.__manifest: list[dict] = []
-        self.__cur_episode = 0
+        self.__episode_boundaries: list[int] = []
 
         self.__load_existing_manifest()
 
@@ -204,7 +204,7 @@ class HexPandasTrainWriter:
             print(f"    {file_info['file']}: {file_info['samples']} samples, episode={ep}, end_idx={ei}")
 
     def write_episode(self, data_dict: dict[str, np.ndarray]) -> None:
-        """Write one episode. Each call writes one episode; each file gets its own episode and end_idx."""
+        """Write one episode. Each call adds one episode; flush when over threshold. Each file records episode count and end_idx list."""
         if not data_dict:
             return
 
@@ -215,6 +215,9 @@ class HexPandasTrainWriter:
         ):
             raise ValueError("The shape[0] is not the same for all keys")
 
+        last_end = self.__episode_boundaries[-1] if self.__episode_boundaries else 0
+        self.__episode_boundaries.append(last_end + episode_samples)
+
         for key, value in data_dict.items():
             if key not in self.__cur_data:
                 self.__cur_data[key] = [value.copy()]
@@ -223,9 +226,8 @@ class HexPandasTrainWriter:
                     [self.__cur_data[key][0], value.copy()], axis=0
                 )
 
-        while self.__cur_data:
+        while self.__cur_data and self.__current_size_bytes() >= self.__switch_bytes:
             self.__flush_current_file()
-        self.__cur_episode += 1
 
     def __load_existing_manifest(self):
         if os.path.exists(self.__manifest_path):
@@ -237,8 +239,6 @@ class HexPandasTrainWriter:
                 self.__manifest = loaded
             if self.__manifest:
                 self.__cur_idx = self.__manifest[-1]["idx"] + 1
-                last = self.__manifest[-1]
-                self.__cur_episode = last.get("episode", 0) + 1
 
     def __flush_current_file(self):
         if not self.__cur_data:
@@ -248,20 +248,22 @@ class HexPandasTrainWriter:
         file_name = f"{self.__prefix}{self.__cur_idx:04d}.pkl"
         pd.to_pickle(df, f"{self.__data_dir}/{file_name}")
         samples = self.__cur_data["idx"][0].shape[0]
-        total_before = sum(item["samples"] for item in self.__manifest)
-        end_idx = total_before + samples
+
+        episode = len(self.__episode_boundaries)
+        end_idx = self.__episode_boundaries.copy()
 
         self.__manifest.append({
             "file": file_name,
             "idx": self.__cur_idx,
             "samples": samples,
             "size": self.__current_size_bytes(),
-            "episode": self.__cur_episode,
+            "episode": episode,
             "end_idx": end_idx,
         })
 
         self.__cur_idx += 1
         self.__cur_data = {}
+        self.__episode_boundaries = []
         self.__save_manifest()
 
     def __save_manifest(self) -> None:
