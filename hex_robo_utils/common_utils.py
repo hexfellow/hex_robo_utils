@@ -6,7 +6,7 @@
 # Date  : 2026-02-22
 ################################################################
 
-import time
+import time, os
 import cv2
 import numpy as np
 from .math_utils import angle_norm
@@ -61,7 +61,7 @@ def time_interp(
     data_arr: np.ndarray,
 ) -> np.ndarray:
     assert ts_arr.shape[0] == data_arr.shape[
-        0], "**search_ts** and **data_arr** must have the same length"
+        0], "**ts_arr** and **data_arr** must have the same length"
 
     idx = np.searchsorted(ts_arr, search_ts)
     idx_later = np.clip(idx, 1, ts_arr.shape[0] - 1)
@@ -74,6 +74,24 @@ def time_interp(
     weight_earlier = 1.0 - weight_later
     return data_arr[idx_later] * weight_later + data_arr[
         idx_earlier] * weight_earlier
+
+
+def time_nearest(
+    search_ts: float | np.ndarray,
+    ts_arr: np.ndarray,
+    data_arr: np.ndarray,
+) -> np.ndarray:
+    idx = np.searchsorted(ts_arr, search_ts)
+    idx_later = np.clip(idx, 1, ts_arr.shape[0] - 1)
+    idx_earlier = idx_later - 1
+    ts_earlier, ts_later = ts_arr[idx_earlier], ts_arr[idx_later]
+    earlier_diff = np.fabs(search_ts - ts_earlier)
+    later_diff = np.fabs(search_ts - ts_later)
+    choose_earlier = earlier_diff < later_diff
+
+    idx = idx_later.copy()
+    idx[choose_earlier] = idx_earlier[choose_earlier]
+    return data_arr[idx]
 
 
 def remap(
@@ -211,3 +229,14 @@ def gripper_pos_limit(
     upper_bound: np.ndarray,
 ) -> np.ndarray:
     return np.clip(gripper_pos, lower_bound, upper_bound)
+
+
+def hex_rmtree(path: str) -> None:
+    if not os.path.exists(path):
+        return
+    for root, dirs, files in os.walk(path, topdown=False):
+        for f in files:
+            os.remove(os.path.join(root, f))
+        for d in dirs:
+            os.rmdir(os.path.join(root, d))
+    os.rmdir(path)

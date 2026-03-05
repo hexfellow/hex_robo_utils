@@ -41,11 +41,13 @@ from .common_utils import depth_to_cmap
 from .common_utils import deadzone
 from .common_utils import remap
 from .common_utils import time_interp
+from .common_utils import time_nearest
 from .common_utils import interp_joint
 from .common_utils import mit_cmd
 from .common_utils import dof_parser
 from .common_utils import arm_pos_limit
 from .common_utils import gripper_pos_limit
+from .common_utils import hex_rmtree
 
 # basic
 from .math_utils import hat
@@ -129,11 +131,13 @@ __all__ = [
     'deadzone',
     'remap',
     'time_interp',
+    'time_nearest',
     'interp_joint',
     'mit_cmd',
     'dof_parser',
     'arm_pos_limit',
     'gripper_pos_limit',
+    'hex_rmtree',
 
     # math basic
     'hat',
