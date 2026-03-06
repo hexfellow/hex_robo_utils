@@ -15,6 +15,7 @@ from collections import deque
 
 from .data_base import HexDataWriterBase
 from ..time_utils import ns_now, HexRate
+from ..common_utils import hex_rmtree
 
 
 class HexRerunWriter(HexDataWriterBase):
@@ -183,13 +184,18 @@ class HexRerunWriter(HexDataWriterBase):
                     break
 
 
-def rerun_to_pd(rrd_path: str, pd_dir: str = None, quiet: bool = True) -> None:
+def rerun_to_pd(rrd_path: str,
+                pd_dir: str = None,
+                quiet: bool = True,
+                remove_old: bool = False) -> None:
     if pd_dir is None:
         pd_dir = rrd_path
 
-    has_pkl = os.path.exists(pd_dir) and any(
-        f.endswith('.pkl') for f in os.listdir(pd_dir))
-    if has_pkl:
+    if remove_old:
+        hex_rmtree(pd_dir)
+
+    if os.path.exists(pd_dir) and any(
+            f.endswith('.pkl') for f in os.listdir(pd_dir)):
         if not quiet:
             print(
                 f"Found pd cache files in {pd_dir}. You can use them directly."
