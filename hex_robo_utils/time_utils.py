@@ -51,7 +51,7 @@ class HexTimeManager(metaclass=SingletonMeta):
                                          ctypes.byref(ts)) != 0:
                 err = ctypes.get_errno()
                 raise OSError(err, os.strerror(err))
-            return ts.tv_sec * 1_000_000_000 + ts.tv_nsec
+            return int(ts.tv_sec * 1_000_000_000 + ts.tv_nsec)
         else:
             return time.perf_counter_ns()
 
@@ -61,7 +61,7 @@ _HEX_TIME_MANAGER = HexTimeManager()
 
 def hex_ts_to_ns(ts: dict) -> int:
     try:
-        return ts['s'] * 1_000_000_000 + ts['ns']
+        return int(ts['s'] * 1_000_000_000 + ts['ns'])
     except Exception as e:
         print(f"hex_ts_to_ns failed: {e}")
         return np.inf
@@ -69,8 +69,8 @@ def hex_ts_to_ns(ts: dict) -> int:
 
 def ns_to_hex_ts(ns: int) -> dict:
     return {
-        "s": ns // 1_000_000_000,
-        "ns": ns % 1_000_000_000,
+        "s": int(ns // 1_000_000_000),
+        "ns": int(ns % 1_000_000_000),
     }
 
 
