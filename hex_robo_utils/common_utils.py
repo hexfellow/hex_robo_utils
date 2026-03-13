@@ -81,6 +81,9 @@ def time_nearest(
     ts_arr: np.ndarray,
     data_arr: np.ndarray,
 ) -> np.ndarray:
+    scalar_input = np.isscalar(search_ts)
+    if scalar_input:
+        search_ts = np.asarray([search_ts])
     idx = np.searchsorted(ts_arr, search_ts)
     idx_later = np.clip(idx, 1, ts_arr.shape[0] - 1)
     idx_earlier = idx_later - 1
@@ -91,7 +94,10 @@ def time_nearest(
 
     idx = idx_later.copy()
     idx[choose_earlier] = idx_earlier[choose_earlier]
-    return data_arr[idx]
+    result = data_arr[idx]
+    if scalar_input:
+        return result[0]
+    return result
 
 
 def remap(
